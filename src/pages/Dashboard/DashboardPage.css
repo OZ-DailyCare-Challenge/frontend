@@ -601,4 +601,14 @@
   .dashboard-recommend-grid {
     grid-template-columns: 1fr;
   }
+
+  .dashboard-api-message {
+    margin: 8px 0 16px;
+    font-size: 14px;
+    color: #4f5d52;
+  }
+
+  .dashboard-api-message.error {
+    color: #d64545;
+  }
 }

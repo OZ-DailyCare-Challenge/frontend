@@ -1,11 +1,73 @@
+import { useEffect, useMemo, useState } from "react";
 import Layout from "../../components/Layout/Layout";
 import "./DashboardPage.css";
+import { getDashboard, type DashboardResponse } from "../../api/user";
+import { storage } from "../../utils/storage";
 
-const savedData = localStorage.getItem("healthData");
-const data = savedData ? JSON.parse(savedData) : null;
-const nickname = data?.nickname || "Buddy";
+type HealthData = {
+  nickname?: string;
+  systolicBloodPressure?: number;
+  diastolicBloodPressure?: number;
+  fastingBloodSugar?: number;
+  totalCholesterol?: number;
+};
 
 export default function DashboardPage() {
+  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const savedHealthData: HealthData | null = useMemo(() => {
+    const raw = localStorage.getItem("healthData");
+    return raw ? JSON.parse(raw) : null;
+  }, []);
+
+  const savedUser = useMemo(() => storage.getUser(), []);
+
+  const nickname =
+    savedHealthData?.nickname ||
+    savedUser?.nickname ||
+    dashboardData?.nickname ||
+    "Buddy";
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const result = await getDashboard();
+        setDashboardData(result);
+        console.log("dashboard api success:", result);
+      } catch (err) {
+        console.error(err);
+        setError("대시보드 데이터를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  const score = Number(dashboardData?.score ?? 72);
+  const steps = Number(dashboardData?.steps ?? 6240);
+  const challengeProgress = Number(dashboardData?.challenge_progress ?? 75);
+  const streakDays = Number(dashboardData?.streak_days ?? 14);
+
+  const systolicBP = Number(
+    dashboardData?.systolic_bp ?? savedHealthData?.systolicBloodPressure ?? 118
+  );
+  const diastolicBP = Number(
+    dashboardData?.diastolic_bp ?? savedHealthData?.diastolicBloodPressure ?? 76
+  );
+  const fastingGlucose = Number(
+    dashboardData?.fasting_glucose ?? savedHealthData?.fastingBloodSugar ?? 98
+  );
+  const cholesterol = Number(
+    dashboardData?.cholesterol ?? savedHealthData?.totalCholesterol ?? 215
+  );
+
   return (
     <Layout>
       <div className="dashboard-page">
@@ -19,9 +81,12 @@ export default function DashboardPage() {
           </div>
 
           <div className="dashboard-topbar-right">
-            <div className="dashboard-streak-badge">🔥 14일 연속 달성 중</div>
+            <div className="dashboard-streak-badge">🔥 {streakDays}일 연속 달성 중</div>
           </div>
         </section>
+
+        {loading && <p className="dashboard-api-message">불러오는 중...</p>}
+        {error && <p className="dashboard-api-message error">{error}</p>}
 
         <section className="dashboard-hero-card">
           <div className="dashboard-hero-left">
@@ -29,18 +94,21 @@ export default function DashboardPage() {
 
             <div className="dashboard-hero-text">
               <div className="dashboard-score-row">
-                <span className="dashboard-score-number">72</span>
+                <span className="dashboard-score-number">{score}</span>
                 <span className="dashboard-score-label">점 · 오늘의 건강 점수</span>
               </div>
 
               <div className="dashboard-progress-bar">
-                <div className="dashboard-progress-fill" />
+                <div
+                  className="dashboard-progress-fill"
+                  style={{ width: `${Math.min(score, 100)}%` }}
+                />
               </div>
 
               <div className="dashboard-status-inline">
                 <span>혈압 정상</span>
                 <span>혈당 정상</span>
-                <span>걸음 6,240보</span>
+                <span>걸음 {steps.toLocaleString()}보</span>
               </div>
             </div>
           </div>
@@ -48,7 +116,9 @@ export default function DashboardPage() {
           <div className="dashboard-hero-right">
             <div className="dashboard-target-box">
               <p className="dashboard-target-title">목표까지</p>
-              <p className="dashboard-target-value">1,800보 남았어요!</p>
+              <p className="dashboard-target-value">
+                {Math.max(8000 - steps, 0).toLocaleString()}보 남았어요!
+              </p>
             </div>
 
             <button className="dashboard-side-action">🥗 식단 기록하기</button>
@@ -58,26 +128,30 @@ export default function DashboardPage() {
         <section className="dashboard-metrics-grid">
           <div className="dashboard-metric-card">
             <p className="dashboard-metric-label">혈압</p>
-            <h3 className="dashboard-metric-value">118 / 76 mmHg</h3>
+            <h3 className="dashboard-metric-value">
+              {systolicBP} / {diastolicBP} mmHg
+            </h3>
             <p className="dashboard-metric-status good">정상</p>
           </div>
 
           <div className="dashboard-metric-card">
             <p className="dashboard-metric-label">공복 혈당</p>
-            <h3 className="dashboard-metric-value">98 mg/dL</h3>
+            <h3 className="dashboard-metric-value">{fastingGlucose} mg/dL</h3>
             <p className="dashboard-metric-status good">정상</p>
           </div>
 
           <div className="dashboard-metric-card">
             <p className="dashboard-metric-label">콜레스테롤</p>
-            <h3 className="dashboard-metric-value">215 mg/dL</h3>
+            <h3 className="dashboard-metric-value">{cholesterol} mg/dL</h3>
             <p className="dashboard-metric-status warning">주의</p>
           </div>
 
           <div className="dashboard-metric-card">
             <p className="dashboard-metric-label">걸음 수</p>
-            <h3 className="dashboard-metric-value">6,240 보</h3>
-            <p className="dashboard-metric-status progress">목표 78%</p>
+            <h3 className="dashboard-metric-value">{steps.toLocaleString()} 보</h3>
+            <p className="dashboard-metric-status progress">
+              목표 {Math.min(Math.round((steps / 8000) * 100), 100)}%
+            </p>
           </div>
         </section>
 
@@ -88,14 +162,21 @@ export default function DashboardPage() {
               <h2 className="dashboard-section-title">오늘 해야 할 건강 루틴</h2>
             </div>
 
-            <div className="dashboard-section-pill">3 / 4 완료</div>
+            <div className="dashboard-section-pill">
+              {Math.round(challengeProgress / 25)} / 4 완료
+            </div>
           </div>
 
           <div className="dashboard-challenge-progress">
-            <div className="dashboard-challenge-progress-fill" />
+            <div
+              className="dashboard-challenge-progress-fill"
+              style={{ width: `${Math.min(challengeProgress, 100)}%` }}
+            />
           </div>
 
-          <p className="dashboard-challenge-progress-text">75% 달성</p>
+          <p className="dashboard-challenge-progress-text">
+            {challengeProgress}% 달성
+          </p>
 
           <div className="dashboard-challenge-grid">
             <div className="dashboard-challenge-item">
