@@ -1,16 +1,19 @@
 export interface User {
   id: number;
   email: string;
-  provider: string;
-  provider_id: string;
-  nickname: string;
-  role: string;
-  character_stage: number;
-  current_point: number;
+  name?: string;
+  nickname?: string;
+  profile_image?: string | null;
+  role?: string;
+  gender?: string | null;
+  age?: number | null;
+  birth_year?: number | null;
+  character_stage?: number;
+  current_point?: number;
+  created_at?: string;
 }
 
 export interface LoginResponse {
-  is_new_user: boolean;
   access_token: string;
   user: User;
 }

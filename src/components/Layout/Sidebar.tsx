@@ -1,12 +1,18 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { storage } from "../../utils/storage";
 import "./Sidebar.css";
 
 export default function Sidebar() {
   const navigate = useNavigate();
 
-  const savedData = localStorage.getItem("healthData");
-  const data = savedData ? JSON.parse(savedData) : null;
-  const nickname = data?.nickname || "Buddy";
+  const nickname = storage.getDisplayName();
+  const firstLetter = nickname.charAt(0).toUpperCase();
+
+  const handleLogout = () => {
+    storage.clearAuth();
+    storage.clearHealthFlow();
+    navigate("/");
+  };
 
   return (
     <aside className="sidebar">
@@ -16,9 +22,7 @@ export default function Sidebar() {
         </button>
 
         <div className="sidebar-profile">
-          <div className="sidebar-profile-avatar">
-            {nickname.charAt(0).toUpperCase()}
-          </div>
+          <div className="sidebar-profile-avatar">{firstLetter}</div>
           <div className="sidebar-profile-text">
             <p className="sidebar-profile-name">{nickname} 님</p>
             <p className="sidebar-profile-sub">오늘도 함께 건강 루틴</p>
@@ -83,7 +87,7 @@ export default function Sidebar() {
       </div>
 
       <div className="sidebar-bottom">
-        <button className="sidebar-logout-btn" onClick={() => navigate("/")}>
+        <button className="sidebar-logout-btn" onClick={handleLogout}>
           로그아웃
         </button>
       </div>
