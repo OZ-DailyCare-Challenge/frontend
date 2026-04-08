@@ -1,6 +1,27 @@
 import "./HealthInputPage.css";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createHealthRecord, requestHealthAnalysis } from "../../api/health";
+import {
+  initializeUserProfile,
+  updateUserProfile,
+} from "../../api/user";
+import { storage } from "../../utils/storage";
+
+type FormDataType = {
+  nickname: string;
+  birthYear: string;
+  gender: string;
+  height: string;
+  weight: string;
+  systolic: string;
+  diastolic: string;
+  glucose: string;
+  cholesterol: string;
+  smokingFrequency: string;
+  drinkingFrequency: string;
+  exerciseFrequency: string;
+};
 
 const HealthInputPage = () => {
   const navigate = useNavigate();
@@ -8,10 +29,11 @@ const HealthInputPage = () => {
   const [smoking, setSmoking] = useState<boolean | null>(null);
   const [drinking, setDrinking] = useState<boolean | null>(null);
   const [exercise, setExercise] = useState<boolean | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormDataType>({
     nickname: "",
-    age: "",
+    birthYear: "",
     gender: "",
     height: "",
     weight: "",
@@ -24,17 +46,27 @@ const HealthInputPage = () => {
     exerciseFrequency: "",
   });
 
-  const handleInputChange = (key: string, value: string) => {
+  useEffect(() => {
+    if (
+      storage.isLoggedIn() &&
+      storage.hasHealthInput() &&
+      storage.hasAnalysisResult()
+    ) {
+      navigate("/dashboard");
+    }
+  }, [navigate]);
+
+  const handleInputChange = (key: keyof FormDataType, value: string) => {
     setFormData((prev) => ({
       ...prev,
       [key]: value,
     }));
   };
 
-  const handleSubmit = () => {
+  const validateForm = () => {
     if (
       !formData.nickname ||
-      !formData.age ||
+      !formData.birthYear ||
       !formData.gender ||
       !formData.height ||
       !formData.weight ||
@@ -44,18 +76,151 @@ const HealthInputPage = () => {
       !formData.cholesterol
     ) {
       alert("필수 항목을 모두 입력해주세요.");
-      return;
+      return false;
     }
 
-    const healthData = {
-      ...formData,
+    if (smoking === null || drinking === null || exercise === null) {
+      alert("생활습관 항목을 모두 선택해주세요.");
+      return false;
+    }
+
+    if (smoking === true && !formData.smokingFrequency) {
+      alert("흡연 빈도를 선택해주세요.");
+      return false;
+    }
+
+    if (drinking === true && !formData.drinkingFrequency) {
+      alert("음주 빈도를 선택해주세요.");
+      return false;
+    }
+
+    if (exercise === true && !formData.exerciseFrequency) {
+      alert("운동 빈도를 선택해주세요.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    const birthYear = Number(formData.birthYear);
+
+    const initialProfilePayload = {
+      nickname: formData.nickname,
+      gender: formData.gender as "M" | "F",
+      birth_year: birthYear,
+    };
+
+    const updateProfilePayload = {
+      nickname: formData.nickname,
+      birth_year: birthYear,
+    };
+
+    const apiPayload = {
+      systolic_bp: Number(formData.systolic),
+      diastolic_bp: Number(formData.diastolic),
+      total_cholesterol: Number(formData.cholesterol),
+      glucose: Number(formData.glucose),
+      height: Number(formData.height),
+      weight: Number(formData.weight),
+      smoke_yn: smoking === true,
+      alcohol_yn: drinking === true,
+      exercise_yn: exercise === true,
+    };
+
+    const healthDataForUI = {
+      nickname: formData.nickname,
+      birth_year: birthYear,
+      gender: formData.gender,
+      height: Number(formData.height),
+      weight: Number(formData.weight),
+      systolic: Number(formData.systolic),
+      diastolic: Number(formData.diastolic),
+      glucose: Number(formData.glucose),
+      cholesterol: Number(formData.cholesterol),
       smoking,
       drinking,
       exercise,
+      smokingFrequency: formData.smokingFrequency || null,
+      drinkingFrequency: formData.drinkingFrequency || null,
+      exerciseFrequency: formData.exerciseFrequency || null,
     };
 
-    localStorage.setItem("healthData", JSON.stringify(healthData));
-    navigate("/result");
+    try {
+      setIsSubmitting(true);
+
+      const currentUser = storage.getUser();
+      const hasGender = !!currentUser?.gender;
+
+      if (!hasGender) {
+        try {
+          await initializeUserProfile(initialProfilePayload);
+        } catch (error: any) {
+          if (error?.response?.status === 409) {
+            console.log("초기 프로필이 이미 존재해서 update profile로 진행합니다.");
+            await updateUserProfile(updateProfilePayload);
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        await updateUserProfile(updateProfilePayload);
+      }
+
+      const recordResponse = await createHealthRecord(apiPayload);
+
+      const recordId =
+        recordResponse?.record_id ??
+        recordResponse?.id ??
+        recordResponse?.data?.record_id ??
+        recordResponse?.data?.id;
+
+      if (!recordId) {
+        throw new Error("record_id를 찾을 수 없습니다.");
+      }
+
+      const analysisResponse = await requestHealthAnalysis(recordId);
+
+      const taskId =
+        analysisResponse?.task_id ??
+        analysisResponse?.id ??
+        analysisResponse?.data?.task_id ??
+        analysisResponse?.data?.id;
+
+      if (!taskId) {
+        throw new Error("task_id를 찾을 수 없습니다.");
+      }
+
+      if (currentUser) {
+        storage.setUser({
+          ...currentUser,
+          nickname: formData.nickname,
+          birth_year: birthYear,
+          gender: currentUser.gender ?? formData.gender,
+        });
+      }
+
+      storage.setHealthData(healthDataForUI);
+      storage.setHealthRecordId(recordId);
+      storage.setAnalysisTaskId(taskId);
+
+      navigate("/analysis-loading", {
+        state: { taskId },
+      });
+
+    } catch (error: any) {
+      console.error("건강 분석 요청 실패:", error);
+
+      const detailMessage =
+        error?.response?.data?.detail ||
+        "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.";
+
+      alert(detailMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -85,12 +250,14 @@ const HealthInputPage = () => {
               </div>
 
               <div className="input-group">
-                <label>나이</label>
+                <label>출생연도</label>
                 <input
                   type="number"
-                  placeholder="예: 50"
-                  value={formData.age}
-                  onChange={(e) => handleInputChange("age", e.target.value)}
+                  placeholder="예: 1996"
+                  value={formData.birthYear}
+                  onChange={(e) =>
+                    handleInputChange("birthYear", e.target.value)
+                  }
                 />
               </div>
 
@@ -101,8 +268,8 @@ const HealthInputPage = () => {
                   onChange={(e) => handleInputChange("gender", e.target.value)}
                 >
                   <option value="">선택해주세요</option>
-                  <option value="female">여성</option>
-                  <option value="male">남성</option>
+                  <option value="F">여성</option>
+                  <option value="M">남성</option>
                 </select>
               </div>
 
@@ -168,7 +335,9 @@ const HealthInputPage = () => {
                   type="number"
                   placeholder="예: 180"
                   value={formData.cholesterol}
-                  onChange={(e) => handleInputChange("cholesterol", e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("cholesterol", e.target.value)
+                  }
                 />
               </div>
             </div>
@@ -298,8 +467,12 @@ const HealthInputPage = () => {
           </div>
 
           <div className="checkup-action">
-            <button className="analyze-btn" onClick={handleSubmit}>
-              분석하기
+            <button
+              className="analyze-btn"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "분석 중..." : "분석하기"}
             </button>
           </div>
         </div>

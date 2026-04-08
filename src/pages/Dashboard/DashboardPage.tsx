@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout/Layout";
 import "./DashboardPage.css";
 import { getDashboard, type DashboardResponse } from "../../api/user";
@@ -6,31 +7,57 @@ import { storage } from "../../utils/storage";
 
 type HealthData = {
   nickname?: string;
-  systolicBloodPressure?: number;
-  diastolicBloodPressure?: number;
-  fastingBloodSugar?: number;
-  totalCholesterol?: number;
+  systolic?: number | string;
+  diastolic?: number | string;
+  glucose?: number | string;
+  cholesterol?: number | string;
 };
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
+
   const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const savedHealthData: HealthData | null = useMemo(() => {
-    const raw = localStorage.getItem("healthData");
-    return raw ? JSON.parse(raw) : null;
+    return storage.getHealthData();
   }, []);
 
   const savedUser = useMemo(() => storage.getUser(), []);
+
+  useEffect(() => {
+    if (!storage.isLoggedIn()) {
+      navigate("/login");
+      return;
+    }
+
+    if (!storage.hasHealthInput()) {
+      navigate("/health-input");
+      return;
+    }
+
+    if (!storage.hasAnalysisResult()) {
+      navigate("/result");
+      return;
+    }
+  }, [navigate]);
 
   const nickname =
     savedHealthData?.nickname ||
     savedUser?.nickname ||
     dashboardData?.nickname ||
-    "Buddy";
+    storage.getDisplayName();
 
   useEffect(() => {
+    if (
+      !storage.isLoggedIn() ||
+      !storage.hasHealthInput() ||
+      !storage.hasAnalysisResult()
+    ) {
+      return;
+    }
+
     const fetchDashboard = async () => {
       try {
         setLoading(true);
@@ -56,16 +83,16 @@ export default function DashboardPage() {
   const streakDays = Number(dashboardData?.streak_days ?? 14);
 
   const systolicBP = Number(
-    dashboardData?.systolic_bp ?? savedHealthData?.systolicBloodPressure ?? 118
+    dashboardData?.systolic_bp ?? savedHealthData?.systolic ?? 118
   );
   const diastolicBP = Number(
-    dashboardData?.diastolic_bp ?? savedHealthData?.diastolicBloodPressure ?? 76
+    dashboardData?.diastolic_bp ?? savedHealthData?.diastolic ?? 76
   );
   const fastingGlucose = Number(
-    dashboardData?.fasting_glucose ?? savedHealthData?.fastingBloodSugar ?? 98
+    dashboardData?.fasting_glucose ?? savedHealthData?.glucose ?? 98
   );
   const cholesterol = Number(
-    dashboardData?.cholesterol ?? savedHealthData?.totalCholesterol ?? 215
+    dashboardData?.cholesterol ?? savedHealthData?.cholesterol ?? 215
   );
 
   return (

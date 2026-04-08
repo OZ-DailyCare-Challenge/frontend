@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGoogleLogin } from "@react-oauth/google";
 import { loginWithGoogle } from "../../api/auth";
+import { getDashboard } from "../../api/user";
 import { storage } from "../../utils/storage";
 
 const LoginPage = () => {
@@ -17,12 +18,39 @@ const LoginPage = () => {
         setLoading(true);
         setErrorMessage("");
 
+        const previousUser = storage.getUser();
         const result = await loginWithGoogle(codeResponse.code);
+
+        const isDifferentUser =
+          previousUser?.email && result.user?.email
+            ? previousUser.email !== result.user.email
+            : false;
+
+        if (isDifferentUser) {
+          storage.clearHealthFlow();
+          storage.clearPostLoginRedirectPath();
+        }
 
         storage.setAccessToken(result.access_token);
         storage.setUser(result.user);
 
-        navigate("/dashboard");
+        const redirectPath = storage.getPostLoginRedirectPath();
+
+        if (redirectPath) {
+          storage.clearPostLoginRedirectPath();
+          navigate(redirectPath);
+          return;
+        }
+
+        try {
+          await getDashboard();
+          navigate("/dashboard");
+          return;
+        } catch (dashboardError: any) {
+          console.log("dashboard 미존재 또는 최초 사용자:", dashboardError);
+        }
+
+        navigate("/health-input");
       } catch (error) {
         console.error("Google login failed:", error);
         setErrorMessage("로그인에 실패했습니다. 다시 시도해주세요.");

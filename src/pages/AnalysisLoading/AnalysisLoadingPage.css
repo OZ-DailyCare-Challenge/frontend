@@ -1,0 +1,197 @@
+.analysis-loading-page {
+  min-height: 100vh;
+  background: #f6f8f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.analysis-loading-inner {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.analysis-loading-brand {
+  font-size: 30px;
+  font-weight: 800;
+  color: #4c9a5f;
+  margin-bottom: 1px;
+  letter-spacing: -0.03em;
+}
+
+.analysis-loading-scene {
+  position: relative;
+  width: min(72vw, 340px);
+  aspect-ratio: 1 / 1;
+  margin: 0 auto 18px;
+}
+
+/* 받침대 */
+.analysis-wheel-stand {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  width: 78%;
+  height: auto;
+  transform: translateX(-50%);
+  display: block;
+  object-fit: contain;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 바퀴 위치용 래퍼: 위치만 담당 */
+.analysis-wheel-rotor-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 실제 바퀴: 회전만 담당 */
+.analysis-wheel-rotor {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  transform-origin: 50% 50%;
+  animation: wheelRotate 2.8s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* 햄스터 */
+.analysis-hamster-wrap {
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  width: 28%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.analysis-hamster {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  position: relative;
+  z-index: 2;
+  animation: hamsterBounce 0.45s ease-in-out infinite;
+}
+
+.analysis-hamster-shadow {
+  position: absolute;
+  bottom: 10%;
+  width: 58%;
+  height: 10%;
+  background: rgba(30, 42, 34, 0.12);
+  border-radius: 999px;
+  filter: blur(2px);
+  animation: shadowPulse 0.45s ease-in-out infinite;
+  z-index: 1;
+}
+
+.analysis-loading-title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  font-weight: 800;
+  color: #1e2a22;
+  letter-spacing: -0.03em;
+}
+
+.analysis-loading-subtitle {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #7b867e;
+  min-height: 24px;
+}
+
+.analysis-progress-bar {
+  width: 100%;
+  max-width: 320px;
+  height: 12px;
+  border-radius: 999px;
+  background: #dfe5e0;
+  overflow: hidden;
+  margin: 0 auto 10px;
+}
+
+.analysis-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b9c7ff 0%, #8ea2f4 100%);
+  transition: width 0.45s ease;
+}
+
+.analysis-progress-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e2a22;
+}
+
+@keyframes wheelRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hamsterBounce {
+  0%, 100% {
+    transform: translateY(0) rotate(-1deg) scale(1);
+  }
+  25% {
+    transform: translateY(-3px) rotate(1deg) scale(1.01);
+  }
+  50% {
+    transform: translateY(0) rotate(-1deg) scale(0.99);
+  }
+  75% {
+    transform: translateY(-2px) rotate(1deg) scale(1.01);
+  }
+}
+
+@keyframes shadowPulse {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.14;
+  }
+  50% {
+    transform: scaleX(0.9);
+    opacity: 0.1;
+  }
+}
+
+@media (max-width: 768px) {
+  .analysis-loading-brand {
+    font-size: 24px;
+  }
+
+  .analysis-loading-title {
+    font-size: 24px;
+  }
+
+  .analysis-loading-subtitle {
+    font-size: 14px;
+  }
+
+  .analysis-progress-bar {
+    max-width: 280px;
+  }
+}

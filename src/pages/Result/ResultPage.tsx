@@ -1,8 +1,39 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout/Layout";
+import { getHealthAnalysisResult } from "../../api/health";
+import { storage } from "../../utils/storage";
 import "./ResultPage.css";
 
-const mockChallenges = [
+type Mission = {
+  title: string;
+  action: string;
+  reason: string;
+};
+
+type AnalysisResultData = {
+  ml1_predict?: {
+    risk_percent?: number;
+    heart_age?: number;
+    risk_grade?: string;
+    character_stage?: number;
+    top_risk_factors?: string[];
+  };
+  ml1_comment?: {
+    evaluation?: string;
+    alert?: string | null;
+    missions?: Mission[];
+    encouragement?: string;
+  };
+};
+
+type AnalysisApiResponse = {
+  status?: string;
+  data?: AnalysisResultData;
+  error?: string;
+} & AnalysisResultData;
+
+const defaultChallenges = [
   {
     title: "하루 30분 걷기",
     description: "혈압 관리에 도움이 되는 가벼운 유산소 운동",
@@ -20,69 +51,107 @@ const mockChallenges = [
 export default function ResultPage() {
   const navigate = useNavigate();
 
-  const savedData = localStorage.getItem("healthData");
-  const data = savedData ? JSON.parse(savedData) : null;
+  const data = storage.getHealthData();
+  const isLoggedIn = storage.isLoggedIn();
+  const taskId = storage.getAnalysisTaskId();
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [analysisError, setAnalysisError] = useState("");
+  const [analysisData, setAnalysisData] = useState<AnalysisResultData | null>(null);
 
   const nickname = data?.nickname || "Buddy";
 
-  const systolic = Number(data?.systolic || 0);
-  const diastolic = Number(data?.diastolic || 0);
-  const glucose = Number(data?.glucose || 0);
-  const cholesterol = Number(data?.cholesterol || 0);
-  const age = Number(data?.age || 25);
+  useEffect(() => {
+    const fetchAnalysisResult = async () => {
+      if (!taskId) {
+        setAnalysisError("분석 결과 정보가 없습니다.");
+        setIsLoading(false);
+        return;
+      }
 
-  const riskFactors: string[] = [];
+      try {
+        setIsLoading(true);
+        setAnalysisError("");
 
-  if (systolic >= 140 || diastolic >= 90) {
-    riskFactors.push("혈압 수치가 높습니다.");
-  }
-  if (glucose >= 100) {
-    riskFactors.push("공복혈당이 경계 수준이거나 높습니다.");
-  }
-  if (cholesterol >= 200) {
-    riskFactors.push("총 콜레스테롤 수치가 높습니다.");
-  }
-  if (data?.smoking === true) {
-    riskFactors.push("흡연 습관이 심혈관 위험을 높일 수 있습니다.");
-  }
-  if (data?.drinking === true) {
-    riskFactors.push("음주 습관이 혈압 및 대사 건강에 영향을 줄 수 있습니다.");
-  }
-  if (data?.exercise === false) {
-    riskFactors.push("운동 부족이 위험도 상승에 영향을 줄 수 있습니다.");
-  }
+        const result: AnalysisApiResponse = await getHealthAnalysisResult(taskId);
 
-  if (riskFactors.length === 0) {
-    riskFactors.push("현재 입력 기준으로 뚜렷한 고위험 요인은 크지 않아 보여요.");
-  }
+        if (result?.status === "pending") {
+          navigate("/analysis-loading");
+          return;
+        }
 
-  let riskLevel = "보통";
-  let cardioAge = age + 3;
-  let healthScore = 72;
+        // 백엔드가 { status, data } 형태일 수도 있고
+        // 바로 { ml1_predict, ml1_comment } 형태일 수도 있어서 둘 다 대응
+        const actualData =
+          result?.data && (result.data.ml1_predict || result.data.ml1_comment)
+            ? result.data
+            : result;
 
-  if (riskFactors.length >= 4) {
-    riskLevel = "높음";
-    cardioAge = age + 8;
-    healthScore = 48;
-  } else if (riskFactors.length <= 1) {
-    riskLevel = "낮음";
-    cardioAge = Math.max(age - 1, 20);
-    healthScore = 86;
-  }
+        if (actualData?.ml1_predict || actualData?.ml1_comment) {
+          setAnalysisData(actualData);
+        } else {
+          setAnalysisError(result?.error || "분석 결과를 불러오지 못했습니다.");
+        }
+      } catch (error: any) {
+        console.error("분석 결과 조회 실패:", error);
+        setAnalysisError(
+          error?.response?.data?.detail ||
+            error?.response?.data?.error ||
+            "분석 결과를 불러오지 못했습니다."
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const aiComment =
-    riskLevel === "높음"
-      ? "현재 입력된 건강 수치와 생활습관을 종합했을 때 심혈관 건강 관리가 필요한 상태로 보여요. 특히 혈압, 혈당, 생활습관 요인이 함께 작용하고 있을 가능성이 있으니 규칙적인 운동과 식습관 조정이 중요합니다."
-      : riskLevel === "보통"
-      ? "현재 상태는 즉각적인 고위험군으로 보이진 않지만, 혈압·혈당·생활습관 중 일부가 심혈관 건강에 영향을 줄 수 있어요. 작은 생활습관 변화만으로도 충분히 좋은 방향으로 개선할 수 있습니다."
-      : "현재 입력 기준으로는 비교적 안정적인 상태로 보여요. 다만 심혈관 건강은 생활습관의 영향을 크게 받기 때문에 운동, 수면, 식습관을 꾸준히 유지하는 것이 중요합니다.";
+    fetchAnalysisResult();
+  }, [navigate, taskId]);
+
+  const riskGrade = analysisData?.ml1_predict?.risk_grade || "-";
+  const heartAge =
+    typeof analysisData?.ml1_predict?.heart_age === "number"
+      ? `${analysisData.ml1_predict.heart_age}세`
+      : "-";
+  const riskPercent =
+    typeof analysisData?.ml1_predict?.risk_percent === "number"
+      ? `${analysisData.ml1_predict.risk_percent}%`
+      : "-";
+
+  const topRiskFactors =
+    analysisData?.ml1_predict?.top_risk_factors &&
+    analysisData.ml1_predict.top_risk_factors.length > 0
+      ? analysisData.ml1_predict.top_risk_factors
+      : ["분석된 주요 위험 요인이 없습니다."];
+
+  const aiComment = [
+    analysisData?.ml1_comment?.evaluation,
+    analysisData?.ml1_comment?.alert,
+    analysisData?.ml1_comment?.encouragement,
+  ]
+    .filter(Boolean)
+    .join(" ") || "AI 건강 코멘트를 준비 중입니다.";
+
+  const missionChallenges =
+    analysisData?.ml1_comment?.missions &&
+    analysisData.ml1_comment.missions.length > 0
+      ? analysisData.ml1_comment.missions.map((mission) => ({
+          title: mission.title,
+          description: `${mission.action} · ${mission.reason}`,
+        }))
+      : defaultChallenges;
 
   const riskClassName =
-    riskLevel === "높음"
-      ? "high"
-      : riskLevel === "낮음"
-      ? "low"
-      : "medium";
+    riskGrade === "높음" ? "high" : riskGrade === "낮음" ? "low" : "medium";
+
+  const handleChallengeClick = () => {
+    if (!isLoggedIn) {
+      storage.setPostLoginRedirectPath("/challenge");
+      navigate("/login");
+      return;
+    }
+
+    navigate("/challenge");
+  };
 
   return (
     <Layout>
@@ -97,27 +166,41 @@ export default function ResultPage() {
           </div>
 
           <div className={`result-level-pill ${riskClassName}`}>
-            심혈관 위험도 {riskLevel}
+            심혈관 위험도 {riskGrade}
           </div>
         </section>
+
+        {isLoading && (
+          <section className="result-card">
+            <p className="result-card-desc">AI 분석 결과를 불러오는 중입니다...</p>
+          </section>
+        )}
+
+        {!isLoading && analysisError && (
+          <section className="result-card">
+            <p className="result-card-desc">{analysisError}</p>
+          </section>
+        )}
 
         <section className="result-summary-grid">
           <div className="result-summary-card">
             <p className="result-summary-label">심혈관 위험도</p>
-            <h3 className={`result-summary-value ${riskClassName}`}>{riskLevel}</h3>
-            <p className="result-summary-sub">현재 생활습관과 수치 기준</p>
+            <h3 className={`result-summary-value ${riskClassName}`}>
+              {riskGrade}
+            </h3>
+            <p className="result-summary-sub">AI 분석 결과 기준</p>
           </div>
 
           <div className="result-summary-card">
             <p className="result-summary-label">심혈관 나이</p>
-            <h3 className="result-summary-value">{cardioAge}세</h3>
+            <h3 className="result-summary-value">{heartAge}</h3>
             <p className="result-summary-sub">실제 나이 대비 추정</p>
           </div>
 
           <div className="result-summary-card">
-            <p className="result-summary-label">건강 점수</p>
-            <h3 className="result-summary-value">{healthScore}점</h3>
-            <p className="result-summary-sub">종합 건강 상태 점수</p>
+            <p className="result-summary-label">위험도 퍼센트</p>
+            <h3 className="result-summary-value">{riskPercent}</h3>
+            <p className="result-summary-sub">AI 예측 위험 확률</p>
           </div>
         </section>
 
@@ -128,7 +211,7 @@ export default function ResultPage() {
             </div>
 
             <ul className="result-risk-list">
-              {riskFactors.map((factor, index) => (
+              {topRiskFactors.map((factor, index) => (
                 <li className="result-risk-item" key={index}>
                   <span className="result-risk-dot" />
                   <span>{factor}</span>
@@ -142,7 +225,9 @@ export default function ResultPage() {
               <h2 className="result-card-title">AI 종합 코멘트</h2>
             </div>
 
-            <p className="result-ai-comment">{aiComment}</p>
+            <p className="result-ai-comment">
+              {aiComment || "AI 종합 코멘트를 불러오는 중입니다."}
+            </p>
           </div>
         </section>
 
@@ -155,28 +240,29 @@ export default function ResultPage() {
 
             <button
               className="result-primary-btn"
-              onClick={() => navigate("/login")}
+              onClick={handleChallengeClick}
             >
-              로그인하고 챌린지 보기
+              {isLoggedIn ? "챌린지 시작하기" : "로그인하고 챌린지 보기"}
             </button>
           </div>
 
           <p className="result-card-desc">
-            챌린지를 확인하려면 로그인 또는 회원가입이 필요해요.
+            챌린지를 통해 건강 습관을 만들어보세요.
           </p>
 
           <div className="result-challenge-grid">
-            {mockChallenges.map((challenge, index) => (
+            {missionChallenges.map((challenge, index) => (
               <div className="result-challenge-card" key={index}>
-                <div className="result-challenge-lock">🔒</div>
+                {!isLoggedIn && <div className="result-challenge-lock">🔒</div>}
+
                 <h3 className="result-challenge-title">{challenge.title}</h3>
                 <p className="result-challenge-desc">{challenge.description}</p>
 
                 <button
                   className="result-outline-btn"
-                  onClick={() => navigate("/login")}
+                  onClick={handleChallengeClick}
                 >
-                  로그인하고 보기
+                  {isLoggedIn ? "챌린지 시작" : "로그인하고 보기"}
                 </button>
               </div>
             ))}
