@@ -1,4 +1,4 @@
-import api from "./axios";
+import api from "./client";
 import { ENDPOINTS } from "./endpoints";
 import type { LoginResponse } from "../types/auth";
 
