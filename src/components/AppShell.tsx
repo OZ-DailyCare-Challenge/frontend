@@ -12,6 +12,7 @@ import {
   syncHealthFlowComplete,
   clearHealthFlowComplete,
 } from "@/src/utils/health-flow";
+import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 
 type Props = {
   title?: string;
@@ -116,6 +117,18 @@ export default function AppShell({
     void syncFlow();
   }, [mounted, pathname, isGuest]);
 
+  const handleDefaultRequireLogin = () => {
+    const confirmed = window.confirm(
+      "로그인하면 방금 입력한 건강 정보와 분석 결과를 저장하고,\n챌린지와 다른 기능을 이어서 이용할 수 있어요.\n로그인 페이지로 이동할까요?"
+    );
+
+    if (!confirmed) return;
+
+    guestAnalysisStorage.setMigrationNeeded(true);
+    guestAnalysisStorage.setPostLoginRedirect("/dashboard");
+    router.push("/login");
+  };
+
   const handleAuthButtonClick = async () => {
     if (!isLoggedIn) {
       if (onRequireLogin) {
@@ -123,7 +136,7 @@ export default function AppShell({
         return;
       }
 
-      router.push("/login");
+      handleDefaultRequireLogin();
       return;
     }
 
@@ -133,9 +146,15 @@ export default function AppShell({
     try {
       setLoggingOut(true);
       await logoutUser();
+
       setDisplayName("버디");
       setProfileImage("");
       setIsLoggedIn(false);
+
+      storage.clearUser?.();
+      storage.removeRefreshToken?.();
+      clearHealthFlowComplete();
+
       alert("로그아웃 되었어요.");
       window.location.replace("/login");
     } catch (error) {
@@ -150,7 +169,7 @@ export default function AppShell({
     <div className="min-h-screen bg-[#f7faf8]">
       <Sidebar
         isGuest={isGuest}
-        onRequireLogin={onRequireLogin}
+        onRequireLogin={onRequireLogin ?? handleDefaultRequireLogin}
         displayName={displayName}
         profileImage={profileImage}
       />
@@ -181,8 +200,9 @@ export default function AppShell({
             {isGuest && (
               <div className="px-4 pb-4 md:px-6 xl:px-8">
                 <div className="rounded-2xl border border-[#2E7D5B]/10 bg-[#f4faf6] px-4 py-3 text-sm leading-6 text-[#163126]/70">
-                  현재 게스트 체험 중이에요. 로그인 후 챌린지, 식단 분석,
-                  성장 기록, 마이페이지 등 다른 서비스를 이용할 수 있어요.
+                  현재 게스트 체험 중이에요. 로그인하면 방금 입력한 건강 정보와
+                  분석 결과를 저장하고, 챌린지 · 식단 분석 · 성장 기록 ·
+                  마이페이지까지 이어서 이용할 수 있어요.
                 </div>
               </div>
             )}
@@ -204,7 +224,7 @@ export default function AppShell({
 
       <BottomNav
         isGuest={isGuest}
-        onRequireLogin={onRequireLogin}
+        onRequireLogin={onRequireLogin ?? handleDefaultRequireLogin}
         displayName={displayName}
       />
     </div>
