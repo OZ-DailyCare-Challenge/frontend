@@ -7,8 +7,33 @@ import { useGoogleLogin } from "@react-oauth/google";
 
 import Header from "@/src/components/Header";
 import { loginWithGoogle } from "@/src/api/auth";
-import { getDashboard } from "@/src/api/user";
+import {
+  getDashboard,
+  createInitialProfile,
+  updateUserProfile,
+} from "@/src/api/user";
+import { createHealthRecord } from "@/src/api/health";
+import {
+  requestUserHealthAnalysis,
+  getAnalysisResult,
+} from "@/src/api/analysis";
 import { storage } from "@/src/utils/storage";
+import { analysisStorage } from "@/src/utils/analysisStorage";
+import {
+  guestAnalysisStorage,
+  type GuestPendingFlow,
+} from "@/src/utils/guestAnalysisStorage";
+
+function extractRecordId(res: any): number | null {
+  const value =
+    res?.record_id ??
+    res?.id ??
+    res?.data?.record_id ??
+    res?.data?.id ??
+    null;
+
+  return typeof value === "number" ? value : null;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,6 +54,83 @@ export default function LoginPage() {
   }, []);
 
   const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
+
+  const migrateGuestFlowAfterLogin = async () => {
+    const pendingFlow =
+      guestAnalysisStorage.getPendingFlow<GuestPendingFlow>();
+    const shouldMigrate = guestAnalysisStorage.isMigrationNeeded();
+    const redirectPath =
+      guestAnalysisStorage.getPostLoginRedirect() || "/dashboard";
+
+    if (!pendingFlow || !shouldMigrate) {
+      return { redirectedPath: null as string | null };
+    }
+
+    try {
+      try {
+        await createInitialProfile({
+          nickname: pendingFlow.nickname,
+          gender: pendingFlow.gender,
+          birth_year: pendingFlow.birthYear,
+        });
+      } catch (error: any) {
+        const status = error?.response?.status ?? error?.status ?? null;
+
+        if (status === 409) {
+          await updateUserProfile({
+            nickname: pendingFlow.nickname,
+            birth_year: pendingFlow.birthYear,
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      const createdRecord = await createHealthRecord(pendingFlow.healthPayload);
+      const savedRecordId = extractRecordId(createdRecord);
+
+      if (!savedRecordId) {
+        throw new Error("회원 건강 기록 저장 후 record_id를 찾을 수 없습니다.");
+      }
+
+      const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
+
+      const taskId =
+        analysisResponse?.task_id ??
+        analysisResponse?.id ??
+        analysisResponse?.data?.task_id ??
+        null;
+
+      if (!taskId) {
+        throw new Error("회원 분석 task_id를 찾을 수 없습니다.");
+      }
+
+      sessionStorage.setItem(
+        "health-analysis-task",
+        JSON.stringify({
+          taskId,
+          recordId: savedRecordId,
+        })
+      );
+
+      const finalResult = await getAnalysisResult(taskId);
+
+      analysisStorage.setResult(finalResult);
+      sessionStorage.setItem(
+        "health-analysis-result",
+        JSON.stringify(finalResult)
+      );
+      sessionStorage.setItem("health-flow-complete", "true");
+
+      guestAnalysisStorage.clearAll();
+      sessionStorage.removeItem("guest-profile");
+
+      return { redirectedPath: redirectPath };
+    } catch (error) {
+      console.error("게스트 분석 데이터 회원 전환 실패:", error);
+      throw error;
+    }
+  };
 
   const googleLogin = useGoogleLogin({
     flow: "auth-code",
@@ -52,6 +154,8 @@ export default function LoginPage() {
           sessionStorage.removeItem("health-analysis-task");
           sessionStorage.removeItem("health-analysis-result");
           sessionStorage.removeItem("health-ai-missions");
+          guestAnalysisStorage.clearAll();
+          sessionStorage.removeItem("guest-profile");
         }
 
         if (result.access_token) {
@@ -66,6 +170,13 @@ export default function LoginPage() {
           storage.setUser(result.user);
         }
 
+        const migrationResult = await migrateGuestFlowAfterLogin();
+
+        if (migrationResult.redirectedPath) {
+          router.push(migrationResult.redirectedPath);
+          return;
+        }
+
         try {
           await getDashboard();
           router.push("/dashboard");
@@ -74,7 +185,11 @@ export default function LoginPage() {
         }
       } catch (error) {
         console.error(error);
-        setErrorMessage("구글 로그인 중 문제가 발생했어요.");
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "구글 로그인 중 문제가 발생했어요."
+        );
       } finally {
         setLoading(false);
       }
@@ -87,10 +202,12 @@ export default function LoginPage() {
 
   const handleGoogleLogin = () => {
     if (loading) return;
+
     if (!redirectUri) {
       setErrorMessage("구글 리다이렉트 주소가 설정되지 않았어요.");
       return;
     }
+
     googleLogin();
   };
 
@@ -137,7 +254,6 @@ export default function LoginPage() {
                 whileTap={!loading ? { scale: 0.995 } : {}}
                 className="mt-10 flex h-[64px] w-full items-center justify-center gap-3 rounded-[22px] border border-white/50 bg-white/75 px-6 text-[18px] font-medium text-[#274236] shadow-[0_10px_24px_rgba(22,49,38,0.06)] backdrop-blur-xl transition hover:bg-white/90 hover:shadow-[0_14px_30px_rgba(22,49,38,0.10)] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {/* ✅ 구글 로고 */}
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white">
                   <svg width="20" height="20" viewBox="0 0 48 48">
                     <path
@@ -159,7 +275,9 @@ export default function LoginPage() {
                   </svg>
                 </span>
 
-                <span>{loading ? "로그인 중..." : "Google로 계속하기"}</span>
+                <span>
+                  {loading ? "로그인 및 데이터 저장 중..." : "Google로 계속하기"}
+                </span>
               </motion.button>
 
               {errorMessage ? (
