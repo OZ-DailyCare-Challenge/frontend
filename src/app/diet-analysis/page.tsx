@@ -4,18 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/src/components/AppShell";
 import { Camera, Coins, Loader2, Sparkles, UploadCloud } from "lucide-react";
-import type { MealAnalysisMode } from "@/src/types/meals";
+import type {
+  MealAnalysisMode,
+  RequestMealAnalysisResponse,
+} from "@/src/types/meals";
 import { requestMealAnalysis } from "@/src/api/meals";
-
-type RequestMealAnalysisResponse = {
-  task_id?: string;
-  data?: {
-    task_id?: string;
-  };
-  result?: {
-    task_id?: string;
-  };
-};
 
 type PendingMealAnalysis = {
   taskId: string;
@@ -51,15 +44,16 @@ export default function DietAnalysisPage() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [loadingMode, setLoadingMode] = useState<MealAnalysisMode | null>(null);
 
-  const hasImage = useMemo(() => Boolean(selectedFile && previewUrl), [selectedFile, previewUrl]);
+  const hasImage = useMemo(
+    () => Boolean(selectedFile && previewUrl),
+    [selectedFile, previewUrl]
+  );
 
   const handleOpenFilePicker = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -106,13 +100,21 @@ export default function DietAnalysisPage() {
     try {
       setLoadingMode(mode);
 
-      const response: RequestMealAnalysisResponse =
-        await requestMealAnalysis(selectedFile, mode);
+      const response: RequestMealAnalysisResponse = await requestMealAnalysis(
+        selectedFile,
+        mode
+      );
+
+      const responseWithOptionalResult =
+        response as RequestMealAnalysisResponse & {
+          result?: {
+            task_id?: string;
+          };
+        };
 
       const taskId: string | undefined =
-        response.task_id ??
-        response.data?.task_id ??
-        response.result?.task_id;
+        responseWithOptionalResult.task_id ??
+        responseWithOptionalResult.result?.task_id;
 
       if (!taskId) {
         console.error("식단 분석 응답:", response);
