@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/src/components/AppShell";
 import { Camera, Coins, Loader2, Sparkles, UploadCloud } from "lucide-react";
-import type { MealAnalysisMode, RequestMealAnalysisResponse } from "@/src/types/meals";
+import type { MealAnalysisMode } from "@/src/types/meals";
 import { requestMealAnalysis } from "@/src/api/meals";
 
 type RequestMealAnalysisResponse = {
