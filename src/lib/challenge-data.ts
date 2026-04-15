@@ -1,0 +1,173 @@
+export type ChallengeStatus = "locked" | "in_progress" | "done";
+export type VerificationType = "check" | "number" | "photo";
+export type ChallengeCategory = "식습관" | "운동" | "생활습관";
+
+export type Challenge = {
+  id: number;
+  category: ChallengeCategory;
+  title: string;
+  description: string;
+  effect: string;
+  riskTarget: string;
+  verification: VerificationType;
+  durationDays: number;
+  completionWindow: number;
+  currentDay: number;
+  status: ChallengeStatus;
+  logs: (boolean | null)[];
+  lastSubmittedDate: string | null;
+  recommended?: boolean;
+};
+
+export const initialChallenges: Challenge[] = [
+  {
+    id: 1,
+    category: "식습관",
+    title: "저염식",
+    description: "오늘 하루 나트륨 2,000mg 이하로 줄여보세요",
+    effect: "7일 지속 시 수축기 혈압 3mmHg 감소",
+    riskTarget: "고혈압",
+    verification: "check",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 2,
+    category: "식습관",
+    title: "포화지방 줄이기",
+    description: "삼겹살, 버터 대신 생선과 견과류로 바꿔보세요",
+    effect: "꾸준히 실천하면 나쁜 콜레스테롤 수치 개선",
+    riskTarget: "고콜레스테롤",
+    verification: "check",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 3,
+    category: "식습관",
+    title: "당류 줄이기",
+    description: "음료수, 과자 대신 과일로 당 섭취를 줄여보세요",
+    effect: "꾸준히 실천하면 공복혈당 수치 안정화",
+    riskTarget: "고혈당",
+    verification: "check",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 4,
+    category: "식습관",
+    title: "야식 금지",
+    description: "저녁 9시 이후에는 아무것도 먹지 않아요",
+    effect: "꾸준히 실천하면 체중 감소 및 BMI 개선",
+    riskTarget: "과체중 (BMI 25+)",
+    verification: "check",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 5,
+    category: "운동",
+    title: "유산소 운동 20분",
+    description: "빠르게 걷기, 자전거, 뛰기 20분 움직여보세요",
+    effect: "7일 지속 시 혈압 4mmHg 감소, BMI 0.2 개선",
+    riskTarget: "고혈압, 과체중",
+    verification: "photo",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 6,
+    category: "운동",
+    title: "하루 7,000보",
+    description: "만보기 앱으로 오늘 7,000보를 채워보세요",
+    effect: "꾸준히 실천하면 콜레스테롤 수치 개선",
+    riskTarget: "고콜레스테롤",
+    verification: "photo",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 7,
+    category: "운동",
+    title: "식후 15분 걷기",
+    description: "밥 먹고 15분만 천천히 걸어보세요",
+    effect: "꾸준히 실천하면 식후 혈당 스파이크 완화",
+    riskTarget: "고혈당",
+    verification: "photo",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 8,
+    category: "생활습관",
+    title: "물 2L 마시기",
+    description: "하루 8잔의 물로 혈액 순환을 도와주세요",
+    effect: "충분한 수분 섭취 시 심혈관 질환 발생률 감소",
+    riskTarget: "공통",
+    verification: "check",
+    durationDays: 7,
+    completionWindow: 5,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(7).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 9,
+    category: "생활습관",
+    title: "금연 (단계별)",
+    description: "오늘 피운 담배 개비 수를 입력해주세요",
+    effect: "완전 금연 시 심혈관 위험도 30% 감소",
+    riskTarget: "흡연자",
+    verification: "number",
+    durationDays: 30,
+    completionWindow: 21,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(30).fill(null),
+    lastSubmittedDate: null,
+  },
+  {
+    id: 10,
+    category: "생활습관",
+    title: "금주 (단계별)",
+    description: "이번 주 음주 횟수를 기록해주세요",
+    effect: "완전 금주 시 혈압 및 심혈관 위험도 개선",
+    riskTarget: "음주자",
+    verification: "number",
+    durationDays: 30,
+    completionWindow: 21,
+    currentDay: 1,
+    status: "locked",
+    logs: Array(30).fill(null),
+    lastSubmittedDate: null,
+  },
+];
