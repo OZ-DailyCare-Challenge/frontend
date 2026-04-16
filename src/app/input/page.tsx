@@ -212,16 +212,28 @@ export default function InputPage() {
       sessionStorage.removeItem("health-analysis-result");
 
       if (!token) {
+        const guestNickname = form.nickname.trim();
+        const guestBirthYear = Number(form.birthYear);
+
         sessionStorage.setItem(
           "guest-profile",
           JSON.stringify({
-            nickname: form.nickname.trim(),
-            birthYear: Number(form.birthYear),
+            nickname: guestNickname,
+            birthYear: guestBirthYear,
           })
         );
 
+        guestAnalysisStorage.setPendingFlow({
+          nickname: guestNickname,
+          birthYear: guestBirthYear,
+          gender: genderForUser,
+          healthPayload,
+          guestAnalysisPayload,
+        });
+
         const result = await requestGuestHealthAnalysis(guestAnalysisPayload);
 
+        guestAnalysisStorage.clearTaskId();
         guestAnalysisStorage.clearResult();
 
         if (result.task_id) {
