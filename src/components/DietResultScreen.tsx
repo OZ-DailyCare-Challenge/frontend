@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -9,9 +10,15 @@ import {
   Coins,
   HeartPulse,
   Leaf,
+  Loader2,
   Sparkles,
 } from "lucide-react";
-import type { MealAnalysisMode, MealAnalysisResult } from "@/src/types/meals";
+import type {
+  MealAnalysisMode,
+  MealAnalysisResult,
+  RequestMealAnalysisResponse,
+} from "@/src/types/meals";
+import { requestMealAnalysis } from "@/src/api/meals";
 
 type NormalizedMealResult = MealAnalysisResult & {
   feedback?: string;
@@ -50,13 +57,30 @@ function levelColor(level: string) {
   return "bg-[#f4f8ef] text-[#6a8c1e]";
 }
 
-function displayText(value?: string | number | null, fallback = "분석 정보 없음") {
+function displayText(
+  value?: string | number | null,
+  fallback = "분석 정보 없음"
+) {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
 }
 
+function dataUrlToFile(dataUrl: string, filename = "meal-image.jpg") {
+  const [header, body] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);base64/)?.[1] ?? "image/jpeg";
+  const binary = atob(body);
+  const array = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    array[i] = binary.charCodeAt(i);
+  }
+
+  return new File([array], filename, { type: mime });
+}
+
 export default function DietResultScreen({ mode, image, result }: Props) {
   const router = useRouter();
+  const [upgrading, setUpgrading] = useState(false);
 
   const summaryText =
     result.feedback_summary ??
@@ -85,8 +109,51 @@ export default function DietResultScreen({ mode, image, result }: Props) {
     result.estimated_calories != null
       ? `${result.estimated_calories} kcal`
       : "분석 정보 없음";
-  const scoreText =
-    result.overall_score != null ? result.overall_score : "-";
+  const scoreText = result.overall_score != null ? result.overall_score : "-";
+
+  const handleUpgradeToPremium = async () => {
+    try {
+      setUpgrading(true);
+
+      const file = dataUrlToFile(image, "meal-image.jpg");
+      const response: RequestMealAnalysisResponse = await requestMealAnalysis(
+        file,
+        "premium"
+      );
+
+      const responseWithOptionalResult =
+        response as RequestMealAnalysisResponse & {
+          result?: {
+            task_id?: string;
+          };
+        };
+
+      const taskId =
+        responseWithOptionalResult.task_id ??
+        responseWithOptionalResult.result?.task_id;
+
+      if (!taskId) {
+        console.error("프리미엄 식단 분석 응답:", response);
+        throw new Error("프리미엄 식단 분석 task_id를 찾을 수 없어요.");
+      }
+
+      sessionStorage.setItem(
+        "diet-analysis-pending",
+        JSON.stringify({
+          taskId,
+          mode: "premium",
+          image,
+        })
+      );
+
+      router.push("/diet-analysis/analyzing");
+    } catch (error) {
+      console.error("프리미엄 식단 분석 재요청 실패:", error);
+      alert("프리미엄 식단 분석 요청에 실패했어요.");
+    } finally {
+      setUpgrading(false);
+    }
+  };
 
   return (
     <section className="mx-auto w-full max-w-7xl">
@@ -165,7 +232,9 @@ export default function DietResultScreen({ mode, image, result }: Props) {
                   <p className="text-3xl font-bold text-[#2E7D5B]">
                     {scoreText}
                   </p>
-                  <p className="text-xs font-semibold text-[#163126]/55">/ 10점</p>
+                  <p className="text-xs font-semibold text-[#163126]/55">
+                    / 10점
+                  </p>
                 </div>
               </div>
 
@@ -257,16 +326,26 @@ export default function DietResultScreen({ mode, image, result }: Props) {
                       더 자세한 분석이 필요하신가요?
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[#163126]/62">
-                      프리미엄 분석에서는 상세 피드백, 추천 음식, 다음 끼니 제안까지
-                      확인할 수 있어요.
+                      같은 사진으로 바로 이어서 프리미엄 분석을 진행할 수 있어요.
+                      추천 음식, 상세 피드백, 다음 끼니 제안까지 확인해보세요.
                     </p>
 
                     <button
-                      onClick={() => router.push("/diet-analysis")}
-                      className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#163126] px-4 py-3 text-sm font-semibold text-white"
+                      onClick={handleUpgradeToPremium}
+                      disabled={upgrading}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#163126] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Coins size={16} />
-                      300P로 자세히 분석하기
+                      {upgrading ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          프리미엄 분석 준비 중...
+                        </>
+                      ) : (
+                        <>
+                          <Coins size={16} />
+                          300P로 자세히 분석하기
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
