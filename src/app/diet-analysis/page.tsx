@@ -1,9 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import AppShell from "@/src/components/AppShell";
-import { Camera, Coins, Loader2, Sparkles, UploadCloud } from "lucide-react";
+import {
+  Camera,
+  Coins,
+  ImagePlus,
+  Loader2,
+  Sparkles,
+  UploadCloud,
+} from "lucide-react";
 import type {
   MealAnalysisMode,
   RequestMealAnalysisResponse,
@@ -15,6 +23,9 @@ type PendingMealAnalysis = {
   mode: MealAnalysisMode;
   image: string;
 };
+
+const MAX_IMAGE_SIZE_MB = 20;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -36,18 +47,107 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function isSupportedImage(file: File) {
+  const allowedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+  ];
+
+  return allowedTypes.includes(file.type);
+}
+
+function isValidImageSize(file: File) {
+  return file.size <= MAX_IMAGE_SIZE_BYTES;
+}
+
 export default function DietAnalysisPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [loadingMode, setLoadingMode] = useState<MealAnalysisMode | null>(null);
 
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [dropErrorActive, setDropErrorActive] = useState(false);
+  const [cardsReadyPulse, setCardsReadyPulse] = useState(false);
+
+  const [uploadHint, setUploadHint] = useState("");
+  const [hintType, setHintType] = useState<"success" | "error" | "info">(
+    "info"
+  );
+
   const hasImage = useMemo(
     () => Boolean(selectedFile && previewUrl),
     [selectedFile, previewUrl]
   );
+
+  useEffect(() => {
+    if (!uploadHint) return;
+
+    const timer = window.setTimeout(() => {
+      setUploadHint("");
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, [uploadHint]);
+
+  useEffect(() => {
+    if (!dropErrorActive) return;
+
+    const timer = window.setTimeout(() => {
+      setDropErrorActive(false);
+    }, 520);
+
+    return () => window.clearTimeout(timer);
+  }, [dropErrorActive]);
+
+  useEffect(() => {
+    if (!cardsReadyPulse) return;
+
+    const timer = window.setTimeout(() => {
+      setCardsReadyPulse(false);
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [cardsReadyPulse]);
+
+  const showHint = (message: string, type: "success" | "error" | "info") => {
+    setHintType(type);
+    setUploadHint(message);
+  };
+
+  const triggerDropError = (message: string) => {
+    setDropErrorActive(true);
+    showHint(message, "error");
+  };
+
+  const applyFile = async (file: File) => {
+    if (!isSupportedImage(file)) {
+      triggerDropError("JPEG, PNG, WebP, GIF 파일만 업로드할 수 있어요.");
+      return;
+    }
+
+    if (!isValidImageSize(file)) {
+      triggerDropError("이미지 용량은 20MB 이하만 업로드할 수 있어요.");
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setSelectedFile(file);
+      setPreviewUrl(dataUrl);
+      setCardsReadyPulse(true);
+      showHint("이미지를 불러왔어요.", "success");
+    } catch (error) {
+      console.error("식단 이미지 미리보기 생성 실패:", error);
+      triggerDropError("이미지를 불러오지 못했어요.");
+    }
+  };
 
   const handleOpenFilePicker = () => {
     fileInputRef.current?.click();
@@ -57,23 +157,63 @@ export default function DietAnalysisPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
-    if (!allowedTypes.includes(file.type)) {
-      alert("JPG, PNG 파일만 업로드할 수 있어요.");
-      e.target.value = "";
-      return;
-    }
+    await applyFile(file);
+    e.target.value = "";
+  };
 
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setSelectedFile(file);
-      setPreviewUrl(dataUrl);
-    } catch (error) {
-      console.error("식단 이미지 미리보기 생성 실패:", error);
-      alert("이미지를 불러오지 못했어요.");
-    } finally {
-      e.target.value = "";
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragDepthRef.current += 1;
+    setIsDragActive(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    setIsDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragDepthRef.current -= 1;
+
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setIsDragActive(false);
     }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragDepthRef.current = 0;
+    setIsDragActive(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    await applyFile(file);
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    e.preventDefault();
+    await applyFile(file);
+    setCardsReadyPulse(true);
+    showHint("붙여넣은 이미지를 불러왔어요.", "success");
   };
 
   const savePendingAndMove = (
@@ -93,7 +233,7 @@ export default function DietAnalysisPage() {
 
   const handleStartAnalysis = async (mode: MealAnalysisMode) => {
     if (!selectedFile || !previewUrl) {
-      alert("먼저 식단 사진을 업로드해주세요.");
+      showHint("먼저 식단 사진을 업로드해주세요.", "error");
       return;
     }
 
@@ -124,15 +264,23 @@ export default function DietAnalysisPage() {
       savePendingAndMove(taskId, mode, previewUrl);
     } catch (error) {
       console.error("식단 분석 요청 실패:", error);
-      alert(
+      showHint(
         mode === "premium"
           ? "프리미엄 식단 분석 요청에 실패했어요."
-          : "무료 식단 분석 요청에 실패했어요."
+          : "무료 식단 분석 요청에 실패했어요.",
+        "error"
       );
     } finally {
       setLoadingMode(null);
     }
   };
+
+  const hintStyle =
+    hintType === "error"
+      ? "bg-[#d95c5c] text-white"
+      : hintType === "success"
+      ? "bg-[#163126] text-white"
+      : "bg-[#345e4a] text-white";
 
   return (
     <AppShell>
@@ -151,72 +299,194 @@ export default function DietAnalysisPage() {
           </p>
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[1.05fr_1fr]">
-            <div className="rounded-[28px] border border-[#163126]/8 bg-[#fbfcfb] p-6">
+            <motion.div
+              layout
+              className="rounded-[28px] border border-[#163126]/8 bg-[#fbfcfb] p-6"
+            >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png"
+                accept=".jpg,.jpeg,.png,.webp,.gif"
                 className="hidden"
                 onChange={handleFileChange}
               />
 
-              <div className="rounded-[24px] border border-dashed border-[#163126]/14 bg-white p-6">
-                {hasImage ? (
-                  <div>
-                    <div className="overflow-hidden rounded-[20px] border border-[#163126]/8">
-                      <img
-                        src={previewUrl}
-                        alt="업로드한 식단 미리보기"
-                        className="h-[320px] w-full object-cover"
-                      />
-                    </div>
+              <motion.div
+                tabIndex={0}
+                onPaste={handlePaste}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                animate={
+                  dropErrorActive
+                    ? {
+                        x: [0, -8, 8, -6, 6, -3, 3, 0],
+                        borderColor: "rgba(217,92,92,0.55)",
+                        backgroundColor: "rgba(255,242,242,1)",
+                        scale: 1,
+                      }
+                    : isDragActive
+                    ? {
+                        x: 0,
+                        scale: 1.01,
+                        borderColor: "rgba(46,125,91,0.35)",
+                        backgroundColor: "rgba(238,249,242,0.95)",
+                      }
+                    : {
+                        x: 0,
+                        scale: 1,
+                        borderColor: "rgba(22,49,38,0.14)",
+                        backgroundColor: "rgba(255,255,255,1)",
+                      }
+                }
+                transition={{
+                  duration: dropErrorActive ? 0.42 : 0.18,
+                  ease: "easeOut",
+                }}
+                className="relative rounded-[24px] border border-dashed p-6 outline-none"
+              >
+                <AnimatePresence>
+                  {isDragActive && !dropErrorActive ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="pointer-events-none absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_center,rgba(126,232,167,0.16),rgba(126,232,167,0.04)_55%,transparent_80%)]"
+                    />
+                  ) : null}
+                </AnimatePresence>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={handleOpenFilePicker}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#163126]/10 bg-white px-4 py-3 text-sm font-semibold text-[#163126]"
-                      >
-                        <UploadCloud size={16} />
-                        사진 다시 선택하기
-                      </button>
-
-                      <p className="text-sm text-[#163126]/58">
-                        {selectedFile?.name}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex min-h-[360px] flex-col items-center justify-center text-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
-                      <Camera size={34} />
-                    </div>
-
-                    <p className="mt-6 text-2xl font-bold text-[#163126]">
-                      오늘의 식단을 업로드해주세요
-                    </p>
-                    <p className="mt-2 text-sm text-[#163126]/55">
-                      지원 형식: JPG, PNG
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={handleOpenFilePicker}
-                      className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#163126] px-6 py-3 text-sm font-semibold text-white"
+                <AnimatePresence mode="wait">
+                  {hasImage ? (
+                    <motion.div
+                      key="preview"
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                      transition={{ duration: 0.25 }}
                     >
-                      <UploadCloud size={16} />
-                      사진 업로드하기
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+                      <div className="overflow-hidden rounded-[20px] border border-[#163126]/8 bg-[#f5faf7]">
+                        <img
+                          src={previewUrl}
+                          alt="업로드한 식단 미리보기"
+                          className="h-[320px] w-full object-cover"
+                        />
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleOpenFilePicker}
+                          className="inline-flex items-center gap-2 rounded-full border border-[#163126]/10 bg-white px-4 py-3 text-sm font-semibold text-[#163126] transition hover:bg-[#f7faf8]"
+                        >
+                          <UploadCloud size={16} />
+                          사진 다시 선택하기
+                        </button>
+
+                        <p className="text-sm text-[#163126]/58">
+                          {selectedFile?.name}
+                        </p>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-6 text-[#2E7D5B]/90">
+                        다른 이미지를 드래그해서 바꾸거나, 캡처한 이미지를 붙여넣을 수도 있어요.
+                        <br />
+                        JPEG, PNG, WebP, GIF · 최대 20MB
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="empty"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex min-h-[380px] flex-col items-center justify-center text-center"
+                    >
+                      <motion.div
+                        animate={
+                          isDragActive
+                            ? { scale: 1.08, y: -4 }
+                            : dropErrorActive
+                            ? { scale: 1.03 }
+                            : { scale: 1, y: 0 }
+                        }
+                        transition={{ duration: 0.2 }}
+                        className="flex h-24 w-24 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B] shadow-[0_12px_30px_rgba(46,125,91,0.08)]"
+                      >
+                        {isDragActive ? (
+                          <ImagePlus size={38} />
+                        ) : (
+                          <Camera size={36} />
+                        )}
+                      </motion.div>
+
+                      <p className="mt-6 text-2xl font-bold text-[#163126] md:text-[34px]">
+                        {isDragActive
+                          ? "여기에 사진을 놓아주세요"
+                          : "오늘의 식단을 업로드해주세요"}
+                      </p>
+
+                      <p className="mt-3 text-sm leading-6 text-[#163126]/55 md:text-base">
+                        지원 형식: JPEG, PNG, WebP, GIF · 최대 20MB
+                        <br />
+                        드래그 앤 드롭 또는 복사 붙여넣기도 가능해요.
+                      </p>
+
+                      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleOpenFilePicker}
+                          className="inline-flex items-center gap-2 rounded-full bg-[#163126] px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(22,49,38,0.12)] transition hover:translate-y-[-1px] hover:opacity-95"
+                        >
+                          <UploadCloud size={16} />
+                          사진 업로드하기
+                        </button>
+
+                        <div className="rounded-full border border-[#163126]/10 bg-white px-4 py-3 text-sm font-medium text-[#163126]/70">
+                          Ctrl + V 붙여넣기 가능
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {uploadHint ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      className={`absolute left-1/2 top-5 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-[0_12px_24px_rgba(22,49,38,0.16)] ${hintStyle}`}
+                    >
+                      {uploadHint}
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </motion.div>
+            </motion.div>
 
             <div className="space-y-5">
-              <button
+              <motion.button
                 type="button"
                 onClick={() => handleStartAnalysis("free")}
                 disabled={!hasImage || loadingMode !== null}
+                animate={
+                  cardsReadyPulse && hasImage
+                    ? {
+                        scale: [1, 1.02, 1],
+                        boxShadow: [
+                          "0 0 0 rgba(46,125,91,0)",
+                          "0 18px 36px rgba(46,125,91,0.10)",
+                          "0 0 0 rgba(46,125,91,0)",
+                        ],
+                      }
+                    : {}
+                }
+                whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
+                whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
+                transition={{ duration: 0.55 }}
                 className="block w-full rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-6 text-left transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
@@ -237,12 +507,27 @@ export default function DietAnalysisPage() {
                 <div className="mt-5 inline-flex rounded-full bg-[#ecf9f1] px-3 py-1.5 text-xs font-semibold text-[#2E7D5B]">
                   포인트 차감 없음
                 </div>
-              </button>
+              </motion.button>
 
-              <button
+              <motion.button
                 type="button"
                 onClick={() => handleStartAnalysis("premium")}
                 disabled={!hasImage || loadingMode !== null}
+                animate={
+                  cardsReadyPulse && hasImage
+                    ? {
+                        scale: [1, 1.02, 1],
+                        boxShadow: [
+                          "0 0 0 rgba(198,120,0,0)",
+                          "0 18px 36px rgba(198,120,0,0.10)",
+                          "0 0 0 rgba(198,120,0,0)",
+                        ],
+                      }
+                    : {}
+                }
+                whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
+                whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
+                transition={{ duration: 0.55, delay: 0.05 }}
                 className="block w-full rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-6 text-left transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#fff6e8] text-[#c67800]">
@@ -264,7 +549,7 @@ export default function DietAnalysisPage() {
                   <Coins size={14} />
                   300포인트 사용
                 </div>
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
