@@ -205,10 +205,16 @@ export default function DietAnalysisPage() {
     const items = Array.from(e.clipboardData.items);
     const imageItem = items.find((item) => item.type.startsWith("image/"));
 
-    if (!imageItem) return;
+    if (!imageItem) {
+      triggerDropError("이미지 파일만 붙여넣을 수 있어요.");
+      return;
+    }
 
     const file = imageItem.getAsFile();
-    if (!file) return;
+    if (!file) {
+      triggerDropError("이미지를 불러오지 못했어요.");
+      return;
+    }
 
     e.preventDefault();
     await applyFile(file);
