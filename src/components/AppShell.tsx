@@ -165,6 +165,10 @@ export default function AppShell({
     }
   };
 
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-[#f7faf8]">
       <Sidebar
@@ -184,16 +188,10 @@ export default function AppShell({
 
               <button
                 onClick={handleAuthButtonClick}
-                disabled={!mounted || loggingOut}
+                disabled={loggingOut}
                 className="shrink-0 rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-sm font-medium text-[#163126] transition hover:bg-[#f8fbf8] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {!mounted
-                  ? ""
-                  : isLoggedIn
-                  ? loggingOut
-                    ? "로그아웃 중..."
-                    : "로그아웃"
-                  : "로그인"}
+                {isLoggedIn ? (loggingOut ? "로그아웃 중..." : "로그아웃") : "로그인"}
               </button>
             </div>
 
