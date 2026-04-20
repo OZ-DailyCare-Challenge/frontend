@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { storage } from "@/src/utils/storage";
 import { getDashboard, createInitialProfile, updateUserProfile } from "@/src/api/user";
@@ -14,7 +14,7 @@ function extractRecordId(res: any): number | null {
   return typeof value === "number" ? value : null;
 }
 
-export default function LoginCallbackPage() {
+function LoginCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -58,12 +58,10 @@ export default function LoginCallbackPage() {
 
           const createdRecord = await createHealthRecord(pendingFlow.healthPayload);
           const savedRecordId = extractRecordId(createdRecord);
-
           if (!savedRecordId) throw new Error("record_id를 찾을 수 없습니다.");
 
           const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
           const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
-
           if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
 
           sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
@@ -98,5 +96,17 @@ export default function LoginCallbackPage() {
     <div className="flex min-h-screen items-center justify-center">
       <p className="text-gray-500">로그인 처리 중...</p>
     </div>
+  );
+}
+
+export default function LoginCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-gray-500">로그인 처리 중...</p>
+      </div>
+    }>
+      <LoginCallbackInner />
+    </Suspense>
   );
 }

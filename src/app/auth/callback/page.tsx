@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithGoogle } from "@/src/api/auth";
 import { storage } from "@/src/utils/storage";
@@ -15,7 +15,7 @@ function extractRecordId(res: any): number | null {
   return typeof value === "number" ? value : null;
 }
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -103,5 +103,17 @@ export default function AuthCallbackPage() {
     <div className="flex min-h-screen items-center justify-center">
       <p className="text-gray-500">로그인 처리 중...</p>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-gray-500">로그인 처리 중...</p>
+      </div>
+    }>
+      <AuthCallbackInner />
+    </Suspense>
   );
 }
