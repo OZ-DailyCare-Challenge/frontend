@@ -3,12 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { useGoogleLogin } from "@react-oauth/google";
 
 import Header from "@/src/components/Header";
-import { loginWithGoogle } from "@/src/api/auth";
 import {
-  getDashboard,
   createInitialProfile,
   updateUserProfile,
 } from "@/src/api/user";
@@ -52,8 +49,6 @@ export default function LoginPage() {
       sessionStorage.removeItem("health-ai-missions");
     }
   }, []);
-
-  const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
 
   const migrateGuestFlowAfterLogin = async () => {
     const pendingFlow =
@@ -132,83 +127,9 @@ export default function LoginPage() {
     }
   };
 
-  const googleLogin = useGoogleLogin({
-    flow: "auth-code",
-    redirect_uri: redirectUri,
-    onSuccess: async (codeResponse) => {
-      try {
-        setLoading(true);
-        setErrorMessage("");
-
-        const previousUser = storage.getUser();
-        const result = await loginWithGoogle(codeResponse.code);
-
-        const isDifferentUser =
-          previousUser?.email && result.user?.email
-            ? previousUser.email !== result.user.email
-            : false;
-
-        if (isDifferentUser) {
-          storage.clearHealthFlow?.();
-          sessionStorage.removeItem("health-flow-complete");
-          sessionStorage.removeItem("health-analysis-task");
-          sessionStorage.removeItem("health-analysis-result");
-          sessionStorage.removeItem("health-ai-missions");
-          guestAnalysisStorage.clearAll();
-          sessionStorage.removeItem("guest-profile");
-        }
-
-        if (result.access_token) {
-          storage.setAccessToken(result.access_token);
-        }
-
-        if (result.refresh_token) {
-          storage.setRefreshToken(result.refresh_token);
-        }
-
-        if (result.user) {
-          storage.setUser(result.user);
-        }
-
-        const migrationResult = await migrateGuestFlowAfterLogin();
-
-        if (migrationResult.redirectedPath) {
-          router.push(migrationResult.redirectedPath);
-          return;
-        }
-
-        try {
-          await getDashboard();
-          router.push("/dashboard");
-        } catch {
-          router.push("/input");
-        }
-      } catch (error) {
-        console.error(error);
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "구글 로그인 중 문제가 발생했어요."
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    onError: (errorResponse) => {
-      console.error("google login error:", errorResponse);
-      setErrorMessage("구글 로그인을 다시 시도해주세요.");
-    },
-  });
-
   const handleGoogleLogin = () => {
     if (loading) return;
-
-    if (!redirectUri) {
-      setErrorMessage("구글 리다이렉트 주소가 설정되지 않았어요.");
-      return;
-    }
-
-    googleLogin();
+    window.location.href = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/auth/google/login`;
   };
 
   return (
