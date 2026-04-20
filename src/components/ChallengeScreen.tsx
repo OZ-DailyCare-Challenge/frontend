@@ -390,20 +390,11 @@ export default function ChallengeScreen() {
     if (!selectedChallenge) return;
     if (typeof selectedChallenge.challengeId !== "number") return;
 
-    const user = storage.getUser?.();
-    const userId = user?.id;
-
-    if (!userId) {
-      alert("사용자 정보를 찾을 수 없어요. 다시 로그인해주세요.");
-      return;
-    }
-
     try {
       setLoadingAction(true);
 
       const result = await joinChallengeWithFallback(
-        selectedChallenge.challengeId,
-        userId
+        selectedChallenge.challengeId
       );
 
       const joined: UserChallengeResponse = result.data;
@@ -439,20 +430,11 @@ export default function ChallengeScreen() {
     if (!selectedChallenge) return;
     if (typeof selectedChallenge.challengeId !== "number") return;
 
-    const user = storage.getUser?.();
-    const userId = user?.id;
-
-    if (!userId) {
-      alert("사용자 정보를 찾을 수 없어요. 다시 로그인해주세요.");
-      return;
-    }
-
     try {
       setLoadingAction(true);
 
       const result = await joinChallengeWithFallback(
-        selectedChallenge.challengeId,
-        userId
+        selectedChallenge.challengeId
       );
 
       const joined = result.data;
