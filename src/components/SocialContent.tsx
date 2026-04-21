@@ -219,15 +219,15 @@ export default function SocialContent() {
             >
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
-                  {req.requester.profile_image ? (
-                    <img src={req.requester.profile_image} alt={req.requester.nickname} className="h-full w-full object-cover" />
+                  {req.requester_profile_image ? (
+                    <img src={req.requester_profile_image} alt={req.requester_nickname} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                      {req.requester.nickname[0]}
+                      {req.requester_nickname[0]}
                     </div>
                   )}
                 </div>
-                <span className="text-sm font-medium text-[#163126]">{req.requester.nickname}</span>
+                <span className="text-sm font-medium text-[#163126]">{req.requester_nickname}</span>
               </div>
               <div className="flex gap-2">
                 <button
@@ -259,20 +259,20 @@ export default function SocialContent() {
           )}
           {friends.map((friend) => (
             <div
-              key={friend.id}
+              key={friend.friend_id}
               className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
-                  {friend.friend.profile_image ? (
-                    <img src={friend.friend.profile_image} alt={friend.friend.nickname} className="h-full w-full object-cover" />
+                  {friend.profile_image ? (
+                    <img src={friend.profile_image} alt={friend.nickname} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                      {friend.friend.nickname[0]}
+                      {friend.nickname[0]}
                     </div>
                   )}
                 </div>
-                <span className="text-sm font-medium text-[#163126]">{friend.friend.nickname}</span>
+                <span className="text-sm font-medium text-[#163126]">{friend.nickname}</span>
               </div>
               <button
                 onClick={() => handleDeleteFriend(friend.friend_id)}

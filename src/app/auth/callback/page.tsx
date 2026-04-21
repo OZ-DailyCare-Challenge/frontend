@@ -51,7 +51,7 @@ function AuthCallbackInner() {
                 birth_year: pendingFlow.birthYear,
               });
             } catch (error: any) {
-              const status = error?.response?.status ?? error?.status ?? null;
+              const status = error?.response?.status ?? error?.status ?? (error?.message?.match(/:\s*(\d{3})\s/)?.[1] ? parseInt(error.message.match(/:\s*(\d{3})\s/)[1]) : null);
               if (status === 409) {
                 await updateUserProfile({ nickname: pendingFlow.nickname, birth_year: pendingFlow.birthYear });
               } else {
