@@ -1,13 +1,12 @@
 import { storage } from "@/src/utils/storage";
-import { clearHealthFlowSession } from "@/src/utils/health-flow";
 
-export function resetClientAuthState() {
-  storage.clearUser?.();
-  storage.removeAccessToken?.();
-  storage.removeRefreshToken?.();
-  storage.clearHealthFlow?.();
-
-  clearHealthFlowSession();
+export function resetClientAuthState(): void {
+  storage.clearUser();
+  storage.clearAccessToken();
+  storage.clearRefreshToken();
+  storage.clearAccessSnapshot();
+  storage.clearHealthFlow();
+  storage.clearGuestFlow();
 
   localStorage.removeItem("myhealthbuddy-challenge-store");
   sessionStorage.removeItem("health-ai-missions");
