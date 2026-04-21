@@ -35,6 +35,11 @@ export type UserProfileResponse = {
   current_point?: number;
   character_stage?: string | number;
   created_at?: string;
+
+  // 백엔드에서 지원하면 로그인/유저 조회 응답에 같이 내려올 수 있음
+  withdrawal_pending?: boolean;
+  withdrawal_deadline?: string;
+
   [key: string]: unknown;
 };
 
@@ -139,7 +144,7 @@ export async function updateUserProfile(
 }
 
 /**
- * 회원 탈퇴
+ * 회원 탈퇴 (7일 후 삭제 예약)
  */
 export async function withdrawUser(
   reason = ""
@@ -162,6 +167,29 @@ export async function withdrawUser(
 /**
  * 로그아웃 (프론트 상태 초기화)
  */
-export function logoutUser(): void {
+export async function logoutUser(): Promise<void> {
   storage.logout();
 }
+
+/**
+ * 회원 탈퇴 취소
+ *
+ * 백엔드 API가 생기면 아래 주석을 해제해서 사용하면 됨.
+ * 예시 경로: /api/v1/users/withdraw/cancel
+ */
+
+// export async function cancelWithdraw(): Promise<{ message?: string } | null> {
+//   const response = await fetch(
+//     `${getApiBaseUrl()}/api/v1/users/withdraw/cancel`,
+//     {
+//       method: "POST",
+//       headers: getAuthHeaders(),
+//     }
+//   );
+//
+//   if (!response.ok) {
+//     await parseErrorResponse(response, "회원 탈퇴 취소 실패");
+//   }
+//
+//   return response.json().catch(() => null);
+// }

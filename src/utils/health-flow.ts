@@ -1,8 +1,19 @@
+import { storage } from "@/src/utils/storage";
+
 const HEALTH_FLOW_COMPLETE_KEY = "health-flow-complete";
 
 export function isHealthFlowComplete() {
   if (typeof window === "undefined") return false;
-  return sessionStorage.getItem(HEALTH_FLOW_COMPLETE_KEY) === "true";
+
+  const sessionComplete =
+    sessionStorage.getItem(HEALTH_FLOW_COMPLETE_KEY) === "true";
+
+  if (sessionComplete) {
+    return true;
+  }
+
+  const snapshot = storage.getAccessSnapshot();
+  return snapshot?.hasHealthRecord === true && snapshot?.hasHealthAnalysis === true;
 }
 
 export function markHealthFlowComplete() {
