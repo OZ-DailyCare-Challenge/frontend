@@ -9,6 +9,7 @@ import {
   Utensils,
   ChartNoAxesColumn,
   User,
+  Users,
 } from "lucide-react";
 import { isHealthFlowComplete } from "@/src/utils/health-flow";
 
@@ -98,6 +99,11 @@ export default function Sidebar({
         icon: <ChartNoAxesColumn size={20} strokeWidth={2.1} />,
       },
       {
+        href: "/social",
+        label: "친구",
+        icon: <Users size={20} strokeWidth={2.1} />,
+      },
+      {
         href: "/mypage",
         label: "마이페이지",
         icon: <User size={20} strokeWidth={2.1} />,
@@ -109,6 +115,7 @@ export default function Sidebar({
   const canAccessMenu = (href: string) => {
     if (href === "/mypage") return true;
     if (href === "/result") return true;
+    if (href === "/social") return true;
     return flowComplete;
   };
 
