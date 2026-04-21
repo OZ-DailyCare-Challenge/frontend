@@ -95,87 +95,76 @@ export default function Header({
     }
   };
 
-  const brandClass = isLight
-    ? "border border-white/40 bg-white/30 text-[#1F5C45] backdrop-blur-md shadow-[0_6px_18px_rgba(22,49,38,0.08)] hover:bg-white/40"
-    : "border border-[#d8e6dc] bg-white/88 text-[#163126] backdrop-blur-xl shadow-[0_10px_24px_rgba(22,49,38,0.05)] hover:bg-white";
-
-  const buttonClass = isLight
-    ? "rounded-full border border-white/40 bg-white/30 px-5 py-2.5 text-sm font-semibold text-[#1F5C45] shadow-[0_10px_30px_rgba(22,49,38,0.08)] backdrop-blur-md hover:bg-white/40"
-    : "rounded-full border border-[#d8e6dc] bg-white/88 px-5 py-2.5 text-sm font-semibold text-[#163126] shadow-[0_10px_24px_rgba(22,49,38,0.06)] backdrop-blur-xl hover:bg-white";
-
-  const dropdownClass = isLight
-    ? "border-white/20 bg-white/92 text-[#163126] backdrop-blur-xl"
-    : "border-[#d8e6dc] bg-white text-[#163126]";
+  const buttonClass = `rounded-full px-5 py-2.5 text-sm font-semibold transition ${
+    isLight
+      ? "border border-white/30 bg-white/14 text-white shadow-[0_10px_30px_rgba(0,0,0,0.10)] backdrop-blur-xl hover:bg-white/20"
+      : "border border-[#d8e6dc] bg-white/85 text-[#163126] shadow-[0_10px_24px_rgba(22,49,38,0.06)] backdrop-blur-xl hover:bg-white"
+  }`;
 
   return (
     <header
-      className={`fixed left-0 top-0 z-[120] w-full transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed left-0 top-0 z-[120] w-full transition-all duration-500 ${
         visible ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
       }`}
     >
-      <div className="relative">
-        <div
-          className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      <div className="flex h-[88px] w-full items-center justify-between px-6 md:px-10 lg:px-16">
+        <button
+          onClick={() => router.push("/")}
+          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
             isLight
-              ? "bg-transparent backdrop-blur-0 border-b border-transparent shadow-none"
-              : "bg-white/80 backdrop-blur-2xl border-b border-[#e4efe7]/95 shadow-[0_10px_28px_rgba(22,49,38,0.06)]"
+              ? "border border-white/20 bg-white/10 text-white backdrop-blur-xl hover:bg-white/16"
+              : "border border-[#d8e6dc] bg-white/80 text-[#163126] backdrop-blur-xl hover:bg-white"
           }`}
-        />
+        >
+          MyHealthBuddy
+        </button>
 
-        <div className="relative z-10 flex h-[88px] w-full items-center justify-between px-6 md:px-10 lg:px-16">
-          <button
-            onClick={() => router.push("/")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-500 ${brandClass}`}
-          >
-            MyHealthBuddy
+        {!isLoggedIn ? (
+          <button onClick={handleLoginClick} className={buttonClass}>
+            로그인
           </button>
-
-          {!isLoggedIn ? (
+        ) : (
+          <div className="relative" ref={dropdownRef}>
             <button
-              onClick={handleLoginClick}
-              className={`transition-all duration-500 ${buttonClass}`}
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className={buttonClass}
             >
-              로그인
+              {displayName}님 ▾
             </button>
-          ) : (
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className={`transition-all duration-500 ${buttonClass}`}
+
+            {menuOpen && (
+              <div
+                className={`absolute right-0 mt-3 w-44 overflow-hidden rounded-2xl border shadow-[0_14px_36px_rgba(22,49,38,0.12)] ${
+                  isLight
+                    ? "border-white/20 bg-white/88 text-[#163126] backdrop-blur-xl"
+                    : "border-[#d8e6dc] bg-white text-[#163126]"
+                }`}
               >
-                {displayName}님 ▾
-              </button>
-
-              {menuOpen && (
-                <div
-                  className={`absolute right-0 mt-3 w-44 overflow-hidden rounded-2xl border shadow-[0_14px_36px_rgba(22,49,38,0.12)] ${dropdownClass}`}
+                <button
+                  onClick={handleDashboardMove}
+                  className="block w-full px-4 py-3 text-left text-sm font-medium transition hover:bg-[#f4faf6]"
                 >
-                  <button
-                    onClick={handleDashboardMove}
-                    className="block w-full px-4 py-3 text-left text-sm font-medium transition hover:bg-[#f4faf6]"
-                  >
-                    대시보드
-                  </button>
+                  대시보드
+                </button>
 
-                  <button
-                    onClick={handleMyPageMove}
-                    className="block w-full px-4 py-3 text-left text-sm font-medium transition hover:bg-[#f4faf6]"
-                  >
-                    마이페이지
-                  </button>
+                <button
+                  onClick={handleMyPageMove}
+                  className="block w-full px-4 py-3 text-left text-sm font-medium transition hover:bg-[#f4faf6]"
+                >
+                  마이페이지
+                </button>
 
-                  <button
-                    onClick={() => void handleLogout()}
-                    disabled={loggingOut}
-                    className="block w-full px-4 py-3 text-left text-sm font-medium text-[#c25555] transition hover:bg-[#fff6f6] disabled:opacity-60"
-                  >
-                    {loggingOut ? "로그아웃 중..." : "로그아웃"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                <button
+                  onClick={() => void handleLogout()}
+                  disabled={loggingOut}
+                  className="block w-full px-4 py-3 text-left text-sm font-medium text-[#c25555] transition hover:bg-[#fff6f6] disabled:opacity-60"
+                >
+                  {loggingOut ? "로그아웃 중..." : "로그아웃"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

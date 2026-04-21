@@ -19,6 +19,8 @@ import {
 import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
+import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 type Mission = {
   title?: string;
@@ -193,11 +195,16 @@ export default function ResultPage() {
 
           if (storedResult && !cancelled) {
             setResult(normalizeFromAnalysisResult(storedResult));
+            markHealthFlowComplete();
+            useAccessStore.getState().markAnalysisComplete();
           } else {
             const history = await getAnalysisHistory();
 
             if (!cancelled && history?.items?.length) {
-              setResult(normalizeFromHistoryItem(history.items[0]));
+              const latest = normalizeFromHistoryItem(history.items[0]);
+              setResult(latest);
+              markHealthFlowComplete();
+              useAccessStore.getState().markAnalysisComplete();
             } else if (!cancelled) {
               setResult(emptyResult());
             }
@@ -291,6 +298,18 @@ export default function ResultPage() {
     return `실제 나이보다 ${diff}세 높아요.`;
   }, [result.heartAge, actualAgeText]);
 
+  const handleChallengeMove = () => {
+    const isLoggedIn = Boolean(storage.getAccessToken());
+
+    if (!isLoggedIn) {
+      storage.setPostLoginRedirectPath("/challenge");
+      router.push("/login");
+      return;
+    }
+
+    router.push("/challenge");
+  };
+
   if (!mounted) {
     return (
       <AppShell>
@@ -302,7 +321,7 @@ export default function ResultPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell isGuest={!storage.getAccessToken()}>
       <section className="mx-auto w-full max-w-5xl">
         <div className="rounded-[32px] border border-[#163126]/8 bg-white/82 p-6 shadow-[0_18px_50px_rgba(46,125,91,0.06)] backdrop-blur-xl md:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -329,7 +348,7 @@ export default function ResultPage() {
                 다시 분석하기
               </button>
               <button
-                onClick={() => router.push("/challenge")}
+                onClick={handleChallengeMove}
                 className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white"
               >
                 맞춤 챌린지 보러가기
