@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
+import { getFeed, searchUsers, sendFriendRequest, type FeedItem, type UserSearchResult } from "@/src/api/social";
 
 type ShopTab = "모자" | "옷/스카프" | "액세서리" | "배경";
 
@@ -27,17 +28,6 @@ type ShopItem = {
   emoji: string;
 };
 
-type FriendFeed = {
-  id: number;
-  name: string;
-  message: string;
-};
-
-type FriendSuggestion = {
-  id: number;
-  name: string;
-  streak: string;
-};
 
 export type DashboardViewData = {
   nickname: string;
@@ -60,18 +50,6 @@ type HeroReactionType = "none" | "success" | "streak";
 
 const DASHBOARD_HERO_BG = "/images/skygreen.png";
 
-const friendFeedData: FriendFeed[] = [
-  { id: 1, name: "영현", message: "걷기 챌린지 30일 연속 달성!" },
-  { id: 2, name: "형석", message: "금연 챌린지 완료!" },
-  { id: 3, name: "승희", message: "식단 기록 7일 달성!" },
-  { id: 4, name: "소윤", message: "걷기 챌린지 완료!" },
-];
-
-const friendSuggestions: FriendSuggestion[] = [
-  { id: 1, name: "Berry", streak: "1일차 진행 중" },
-  { id: 2, name: "Chris", streak: "15일차 연속 중" },
-  { id: 3, name: "Sandy", streak: "7일차 진행 중" },
-];
 
 const initialShopItems: ShopItem[] = [
   {
@@ -192,13 +170,21 @@ export default function DashboardScreen({ dashboardData }: Props) {
   const challenges = useChallengeStore((state) => state.challenges);
   const submitCheck = useChallengeStore((state) => state.submitCheck);
 
-  const [likedIds, setLikedIds] = useState<number[]>([]);
+  const [cheeredKeys, setCheeredKeys] = useState<Set<string>>(new Set());
   const [friendKeyword, setFriendKeyword] = useState("");
   const [shopOpen, setShopOpen] = useState(false);
   const [shopTab, setShopTab] = useState<ShopTab>("모자");
   const [points, setPoints] = useState(dashboardData.point);
   const [shopItems, setShopItems] = useState(initialShopItems);
   const [bubbleMessage, setBubbleMessage] = useState("");
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    getFeed().then(setFeedItems).catch(() => {});
+  }, []);
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const completedCount = todayChallenges.filter((item) => item.done).length;
@@ -213,12 +199,25 @@ export default function DashboardScreen({ dashboardData }: Props) {
     [shopItems, shopTab]
   );
 
-  const filteredSuggestions = useMemo(() => {
-    if (!friendKeyword.trim()) return friendSuggestions;
-    return friendSuggestions.filter((friend) =>
-      friend.name.toLowerCase().includes(friendKeyword.toLowerCase())
-    );
-  }, [friendKeyword]);
+  const handleSearch = async () => {
+    if (!friendKeyword.trim()) return;
+    setSearchLoading(true);
+    try {
+      const results = await searchUsers(friendKeyword.trim());
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleSendRequest = async (userId: number) => {
+    try {
+      await sendFriendRequest(userId);
+      setRequestedIds((prev) => new Set(prev).add(userId));
+    } catch {}
+  };
 
   const heartAgeDiff =
     dashboardData.actualAge !== null && dashboardData.heartAge !== null
@@ -250,10 +249,8 @@ export default function DashboardScreen({ dashboardData }: Props) {
     return () => window.clearTimeout(timer);
   }, [heroReactionType]);
 
-  const handleCheer = (id: number) => {
-    setLikedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+  const handleCheer = (key: string) => {
+    setCheeredKeys((prev) => new Set(prev).add(key));
   };
 
   const handleEquip = (target: ShopItem) => {
@@ -547,38 +544,45 @@ export default function DashboardScreen({ dashboardData }: Props) {
             </div>
 
             <div className="space-y-3">
-              {friendFeedData.map((item) => {
-                const liked = likedIds.includes(item.id);
+              {feedItems.length === 0 && (
+                <p className="py-6 text-center text-xs text-[#163126]/40">
+                  친구가 챌린지를 인증하면 여기에 표시돼요.
+                </p>
+              )}
+              {feedItems.map((item) => {
+                const key = `${item.user_id}-${item.created_at}`;
+                const cheered = cheeredKeys.has(key);
 
                 return (
                   <div
-                    key={item.id}
+                    key={key}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecf9f1] text-sm font-bold text-[#2E7D5B]">
-                        {item.name[0]}
+                        {item.nickname[0]}
                       </div>
 
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[#163126]">
-                          {item.name}
+                          {item.nickname}
                         </p>
                         <p className="truncate text-xs text-[#163126]/58">
-                          {item.message}
+                          {item.challenge_title} · {item.current_streak}일 연속
                         </p>
                       </div>
                     </div>
 
                     <button
-                      onClick={() => handleCheer(item.id)}
+                      onClick={() => handleCheer(key)}
+                      disabled={cheered}
                       className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition ${
-                        liked
-                          ? "bg-[#163126] text-white"
+                        cheered
+                          ? "bg-[#163126] text-white cursor-default"
                           : "border border-[#163126]/10 bg-white text-[#163126]"
                       }`}
                     >
-                      {liked ? "응원 완료" : "응원"}
+                      {cheered ? "응원 완료" : "응원"}
                     </button>
                   </div>
                 );
@@ -608,68 +612,61 @@ export default function DashboardScreen({ dashboardData }: Props) {
                 <input
                   value={friendKeyword}
                   onChange={(e) => setFriendKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   placeholder="친구 이름 검색"
                   className="h-12 w-full rounded-2xl border border-[#163126]/10 bg-white pl-11 pr-4 text-sm outline-none"
                 />
               </div>
 
-              <button className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white">
-                검색
+              <button
+                onClick={handleSearch}
+                disabled={searchLoading}
+                className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {searchLoading ? "..." : "검색"}
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
-              {filteredSuggestions.map((friend) => (
+              {searchResults.length === 0 && friendKeyword && !searchLoading && (
+                <p className="py-4 text-center text-xs text-[#163126]/40">
+                  검색 결과가 없어요.
+                </p>
+              )}
+              {searchResults.map((user) => (
                 <div
-                  key={friend.id}
+                  key={user.id}
                   className="flex items-center justify-between gap-3 rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef7e8] text-sm font-semibold text-[#6a8c1e]">
-                      {friend.name[0]}
+                      {user.nickname[0]}
                     </div>
 
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[#163126]">
-                        {friend.name}
-                      </p>
-                      <p className="truncate text-xs text-[#163126]/55">
-                        {friend.streak}
+                        {user.nickname}
                       </p>
                     </div>
                   </div>
 
-                  <button className="inline-flex items-center gap-1 rounded-full border border-[#163126]/10 bg-white px-3 py-2 text-xs font-semibold text-[#163126]">
-                    <UserPlus size={14} />
-                    대기
-                  </button>
+                  {user.is_friend ? (
+                    <span className="text-xs text-[#163126]/40">친구</span>
+                  ) : requestedIds.has(user.id) ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#163126]/10 bg-white px-3 py-2 text-xs font-semibold text-[#163126]/50">
+                      요청됨
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleSendRequest(user.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#163126]/10 bg-white px-3 py-2 text-xs font-semibold text-[#163126] hover:bg-[#f4fbf6] transition"
+                    >
+                      <UserPlus size={14} />
+                      추가
+                    </button>
+                  )}
                 </div>
               ))}
-            </div>
-
-            <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2E7D5B]">
-                친구 추천
-              </p>
-
-              <div className="mt-3 grid grid-cols-3 gap-3">
-                {friendSuggestions.map((friend) => (
-                  <div
-                    key={`mini-${friend.id}`}
-                    className="rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-3 py-4 text-center"
-                  >
-                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#eef7e8] text-sm font-semibold text-[#6a8c1e]">
-                      {friend.name[0]}
-                    </div>
-                    <p className="mt-2 text-sm font-semibold text-[#163126]">
-                      {friend.name}
-                    </p>
-                    <p className="mt-1 text-[11px] text-[#163126]/52">
-                      {friend.streak}
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
           </motion.div>
         </div>

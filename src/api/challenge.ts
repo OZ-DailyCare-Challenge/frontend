@@ -160,11 +160,10 @@ export async function getChallengesWithFallback(): Promise<ChallengesWithFallbac
  * POST /api/v1/challenges/{challenge_id}/join?user_id=...
  */
 export async function joinChallenge(
-  challengeId: number,
-  userId: number
+  challengeId: number
 ): Promise<UserChallengeResponse> {
   const response = await fetch(
-    `${getApiBaseUrl()}/api/v1/challenges/${challengeId}/join?user_id=${userId}`,
+    `${getApiBaseUrl()}/api/v1/challenges/${challengeId}/join`,
     {
       method: "POST",
       headers: getAuthHeaders(),
@@ -182,11 +181,10 @@ export async function joinChallenge(
  * 챌린지 참여 시작 + fallback
  */
 export async function joinChallengeWithFallback(
-  challengeId: number,
-  userId: number
+  challengeId: number
 ): Promise<{ data: UserChallengeResponse; isFallback: boolean }> {
   try {
-    const data = await joinChallenge(challengeId, userId);
+    const data = await joinChallenge(challengeId);
     return { data, isFallback: false };
   } catch (error) {
     if (!isFallbackEligibleError(error)) throw error;
@@ -197,9 +195,9 @@ export async function joinChallengeWithFallback(
       isFallback: true,
       data: {
         id: Date.now(),
-        user_id: userId,
+        user_id: 0,
         challenge_id: challengeId,
-        status: "in_progress",
+        status: "active",
         current_streak: 0,
         start_date: new Date().toISOString().slice(0, 10),
         completed_at: null,
