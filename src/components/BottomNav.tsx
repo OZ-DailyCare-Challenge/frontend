@@ -1,117 +1,183 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Home,
+  LayoutDashboard,
   HeartPulse,
   Trophy,
-  LineChart,
-  User,
   Utensils,
+  ChartNoAxesColumn,
+  User,
 } from "lucide-react";
+import { useAccessStore } from "@/src/store/access-store";
+import { storage, type AccessLevel } from "@/src/utils/storage";
 
-const menus = [
-  { label: "홈", href: "/dashboard", icon: Home },
-  { label: "건강 분석", href: "/analyzing", icon: HeartPulse },
-  { label: "챌린지", href: "/challenge", icon: Trophy },
-  { label: "식단 분석", href: "/diet-analysis", icon: Utensils },
-  { label: "기록", href: "/growth", icon: LineChart },
-  { label: "마이", href: "/mypage", icon: User },
-];
-
-type Props = {
-  isGuest?: boolean;
+type BottomNavProps = {
   onRequireLogin?: () => void;
-  displayName?: string;
 };
 
-export default function BottomNav({
-  isGuest = false,
-  onRequireLogin,
-}: Props) {
-  const pathname = usePathname();
+type NavItem = {
+  key: string;
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  loginRequired?: boolean;
+};
 
-  const isMenuActive = (href: string) => {
+function getBottomItems(accessLevel: AccessLevel): NavItem[] {
+  switch (accessLevel) {
+    case "guest":
+      return [
+        {
+          key: "analysis",
+          href: "/input",
+          label: "분석",
+          icon: <HeartPulse size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "challenge",
+          href: "/challenge",
+          label: "챌린지",
+          icon: <Trophy size={18} strokeWidth={2.2} />,
+          loginRequired: true,
+        },
+      ];
+
+    case "member_profile_only":
+      return [
+        {
+          key: "analysis",
+          href: "/input",
+          label: "분석",
+          icon: <HeartPulse size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "mypage",
+          href: "/mypage",
+          label: "마이",
+          icon: <User size={18} strokeWidth={2.2} />,
+        },
+      ];
+
+    case "member_done":
+      return [
+        {
+          key: "dashboard",
+          href: "/dashboard",
+          label: "대시",
+          icon: <LayoutDashboard size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "analysis",
+          href: "/result",
+          label: "분석",
+          icon: <HeartPulse size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "challenge",
+          href: "/challenge",
+          label: "챌린지",
+          icon: <Trophy size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "diet",
+          href: "/diet-analysis",
+          label: "식단",
+          icon: <Utensils size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "growth",
+          href: "/growth",
+          label: "성장",
+          icon: <ChartNoAxesColumn size={18} strokeWidth={2.2} />,
+        },
+        {
+          key: "mypage",
+          href: "/mypage",
+          label: "마이",
+          icon: <User size={18} strokeWidth={2.2} />,
+        },
+      ];
+  }
+}
+
+export default function BottomNav({ onRequireLogin }: BottomNavProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const hydrated = useAccessStore((state) => state.hydrated);
+  const accessLevel = useAccessStore((state) => state.accessLevel);
+
+  const items = useMemo(() => {
+    if (!hydrated) return [];
+    return getBottomItems(accessLevel);
+  }, [accessLevel, hydrated]);
+
+  const handleRequireLogin = (targetPath: string) => {
+    storage.setPostLoginRedirectPath(targetPath);
+
+    if (onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
+
+    router.push("/login");
+  };
+
+  const handleMove = (item: NavItem) => {
+    if (item.loginRequired && accessLevel === "guest") {
+      handleRequireLogin(item.href);
+      return;
+    }
+
+    router.push(item.href);
+  };
+
+  const isActive = (href: string) => {
     if (href === "/dashboard") {
       return pathname === "/dashboard";
     }
 
-    return pathname === href || pathname.startsWith(href + "/");
+    if (href === "/input") {
+      return pathname === "/input" || pathname.startsWith("/input/");
+    }
+
+    if (href === "/result") {
+      return (
+        pathname === "/result" ||
+        pathname === "/analyzing" ||
+        pathname.startsWith("/result/")
+      );
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
+  if (!hydrated) {
+    return null;
+  }
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#e7efe9] bg-white/96 backdrop-blur-xl md:hidden">
-      <div className="grid grid-cols-6 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
-        {menus.map((menu) => {
-          const Icon = menu.icon;
-          const active = !isGuest && isMenuActive(menu.href);
-
-          const content = (
-            <>
-              <div
-                className={`flex h-11 w-11 items-center justify-center rounded-2xl transition ${
-                  isGuest
-                    ? "bg-transparent"
-                    : active
-                    ? "bg-[#eaf7ee] shadow-[0_8px_20px_rgba(22,49,38,0.06)]"
-                    : "bg-transparent"
-                }`}
-              >
-                <Icon
-                  size={20}
-                  strokeWidth={2.2}
-                  className={
-                    isGuest
-                      ? "text-[#163126]/30"
-                      : active
-                      ? "text-[#163126]"
-                      : "text-[#163126]/45"
-                  }
-                />
-              </div>
-
-              <span
-                className={`text-[11px] font-medium transition ${
-                  isGuest
-                    ? "text-[#163126]/30"
-                    : active
-                    ? "text-[#163126]"
-                    : "text-[#163126]/45"
-                }`}
-              >
-                {menu.label}
-              </span>
-
-              <span
-                className={`mt-0.5 h-1.5 rounded-full bg-[#6ED39B] transition-all ${
-                  active ? "w-5 opacity-100" : "w-1 opacity-0"
-                }`}
-              />
-            </>
-          );
-
-          if (isGuest) {
-            return (
-              <button
-                key={menu.href}
-                type="button"
-                onClick={() => onRequireLogin?.()}
-                className="flex flex-col items-center justify-center gap-1.5 py-2"
-              >
-                {content}
-              </button>
-            );
-          }
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#163126]/8 bg-white/95 px-2 py-2 backdrop-blur md:hidden">
+      <div className="mx-auto flex max-w-xl items-center justify-around gap-1">
+        {items.map((item) => {
+          const active = isActive(item.href);
 
           return (
-            <Link
-              key={menu.href}
-              href={menu.href}
-              className="flex flex-col items-center justify-center gap-1.5 py-2"
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => handleMove(item)}
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition ${
+                active
+                  ? "bg-[#eaf7ee] text-[#163126]"
+                  : "text-[#163126]/60 hover:bg-[#f6faf7]"
+              }`}
             >
-              {content}
-            </Link>
+              <span className="mb-1">{item.icon}</span>
+              <span className="truncate">{item.label}</span>
+            </button>
           );
         })}
       </div>
