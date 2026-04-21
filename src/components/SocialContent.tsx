@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   searchUsers,
   sendFriendRequest,
@@ -126,6 +127,15 @@ export default function SocialContent() {
 
   return (
     <div className="mx-auto max-w-xl">
+      {/* 함께하기 피드 링크 */}
+      <Link
+        href="/social/feed"
+        className="mb-4 flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-3 transition hover:bg-[#f7faf8]"
+      >
+        <span className="text-sm font-medium text-[#163126]">💚 친구 챌린지 피드 보기</span>
+        <span className="text-xs text-[#163126]/40">→</span>
+      </Link>
+
       {message && (
         <div className="mb-4 rounded-2xl bg-[#2E7D5B]/10 px-4 py-3 text-sm text-[#2E7D5B]">
           {message}

@@ -24,6 +24,16 @@ export type Friend = {
   created_at: string;
 };
 
+export type FeedItem = {
+  user_id: number;
+  nickname: string;
+  profile_image?: string | null;
+  challenge_title: string;
+  log_date: string;
+  current_streak: number;
+  created_at: string;
+};
+
 function getApiBaseUrl() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL이 설정되지 않았습니다.");
@@ -96,6 +106,16 @@ export async function getFriends(): Promise<Friend[]> {
   if (!response.ok) await parseErrorResponse(response, "친구 목록 조회 실패");
   const data = await response.json();
   return data.friends ?? [];
+}
+
+export async function getFeed(): Promise<FeedItem[]> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/social/feed`,
+    { method: "GET", headers: getAuthHeaders() }
+  );
+  if (!response.ok) await parseErrorResponse(response, "피드 조회 실패");
+  const data = await response.json();
+  return data.items ?? [];
 }
 
 export async function deleteFriend(friendId: number): Promise<void> {
