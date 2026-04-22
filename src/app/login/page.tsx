@@ -482,18 +482,6 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              {/*
-              백엔드에 탈퇴 취소 API 생기면 이 버튼으로 교체
-              <button
-                type="button"
-                onClick={handleCancelWithdrawConfirm}
-                disabled={withdrawActionLoading}
-                className="flex-1 rounded-2xl bg-[#4C9A5F] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#438953] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {withdrawActionLoading ? "처리 중..." : "계속 이용하기"}
-              </button>
-              */}
-
               <button
                 type="button"
                 onClick={handleWithdrawLater}

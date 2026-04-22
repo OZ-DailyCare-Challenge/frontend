@@ -562,6 +562,9 @@ export default function InputPage() {
 
       // 비회원: guest 분석 흐름
       if (!token) {
+        const guestNickname = form.nickname.trim();
+        const guestBirthYear = Number(form.birthYear);
+
         sessionStorage.setItem(
           GUEST_MIGRATION_KEY,
           JSON.stringify({
@@ -575,14 +578,23 @@ export default function InputPage() {
         sessionStorage.setItem(
           "guest-profile",
           JSON.stringify({
-            nickname: form.nickname.trim(),
-            birthYear,
-            birth_year: birthYear,
+            nickname: guestNickname,
+            birthYear: guestBirthYear,
+            birth_year: guestBirthYear,
           })
         );
 
+        guestAnalysisStorage.setPendingFlow({
+          nickname: guestNickname,
+          birthYear: guestBirthYear,
+          gender: genderForUser,
+          healthPayload,
+          guestAnalysisPayload,
+        });
+
         const result = await requestGuestHealthAnalysis(guestAnalysisPayload);
 
+        guestAnalysisStorage.clearTaskId();
         guestAnalysisStorage.clearResult();
 
         if (result.task_id) {
