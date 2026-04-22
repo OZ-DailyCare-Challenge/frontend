@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 import Header from "../components/Header";
-import HamsterIntro3D from "../components/HamsterIntro3D";
-import FloatingBubbles from "../components/FloatingBubbles";
-import BubbleModal from "../components/BubbleModal";
-import LandingIntroOverlay from "../components/LandingIntroOverlay";
+
+const FloatingBubbles = dynamic(
+  () => import("../components/FloatingBubbles"),
+  { ssr: false }
+);
+
+const BubbleModal = dynamic(() => import("../components/BubbleModal"), {
+  ssr: false,
+});
 
 const bubbleData = [
   {
@@ -116,44 +123,48 @@ export default function HomePage() {
 
   const [selectedBubble, setSelectedBubble] =
     useState<(typeof bubbleData)[0] | null>(null);
-  const [lookTarget, setLookTarget] = useState<{ x: number; y: number } | null>(
-    null
-  );
-  const [jumpTrigger, setJumpTrigger] = useState(0);
   const [launching, setLaunching] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [introDone, setIntroDone] = useState(false);
+  const [introDone] = useState(true);
+  const [enableBubbles] = useState(true);
+  const [headerTheme, setHeaderTheme] = useState<"light" | "dark">("light");
+
+  const heroSectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrollY(window.scrollY);
-    };
+    const hero = heroSectionRef.current;
+    if (!hero) return;
 
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setHeaderTheme(entry.isIntersecting ? "light" : "dark");
+      },
+      {
+        root: null,
+        threshold: 0.12,
+        rootMargin: "-80px 0px 0px 0px",
+      }
+    );
 
-    return () => window.removeEventListener("scroll", handleScroll);
+    observer.observe(hero);
+
+    return () => observer.disconnect();
   }, []);
 
   const particles = useMemo(
     () => [
-      { id: 1, x: -120, y: -40, delay: 0.0 },
-      { id: 2, x: -90, y: -100, delay: 0.05 },
-      { id: 3, x: -30, y: -130, delay: 0.1 },
-      { id: 4, x: 30, y: -130, delay: 0.15 },
-      { id: 5, x: 90, y: -100, delay: 0.2 },
-      { id: 6, x: 120, y: -40, delay: 0.25 },
-      { id: 7, x: 120, y: 30, delay: 0.3 },
-      { id: 8, x: 70, y: 90, delay: 0.35 },
-      { id: 9, x: 0, y: 120, delay: 0.4 },
+      { id: 1, x: -84, y: -26, delay: 0.0 },
+      { id: 2, x: -54, y: -76, delay: 0.08 },
+      { id: 3, x: 0, y: -96, delay: 0.16 },
+      { id: 4, x: 56, y: -72, delay: 0.24 },
+      { id: 5, x: 86, y: -18, delay: 0.32 },
+      { id: 6, x: 44, y: 52, delay: 0.4 },
     ],
     []
   );
 
   const handleBubbleOpen = (bubble: (typeof bubbleData)[0]) => {
-    if (launching || !introDone) return;
+    if (launching || !introDone || !enableBubbles) return;
     setSelectedBubble(bubble);
-    setJumpTrigger((prev) => prev + 1);
   };
 
   const handleAnalyze = () => {
@@ -161,84 +172,63 @@ export default function HomePage() {
 
     setLaunching(true);
     setSelectedBubble(null);
-    setLookTarget(null);
 
     window.setTimeout(() => {
       router.push("/input");
-    }, 1350);
+    }, 1100);
   };
 
   return (
     <main className="min-h-screen text-[#163126]">
-      <Header visible={introDone} />
+      <Header visible={introDone} theme={headerTheme} />
 
       <div className="relative overflow-hidden bg-white">
-        <section className="relative min-h-screen overflow-hidden">
-          <LandingIntroOverlay onFinish={() => setIntroDone(true)} />
-
-          {/* ===== 밝아진 배경 ===== */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div
-              className="absolute inset-0 z-0 scale-[1.04] bg-cover bg-center bg-no-repeat"
-              style={{
-                backgroundImage: "url('/images/skygreen.png')",
-                transform: `translateY(${scrollY * 0.18}px) scale(1.04)`,
-                transformOrigin: "center top",
-              }}
+        <section
+          ref={heroSectionRef}
+          className="relative min-h-screen overflow-hidden"
+        >
+          <div className="absolute inset-0 z-0 overflow-hidden">
+            <Image
+              src="/images/brush-green.webp"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover object-center"
             />
-
-            {/* 전체 밝기 아주 살짝만 */}
-            <div className="absolute inset-0 z-0 bg-[linear-gradient(180deg,#ffffff12_0%,#ffffff24_100%)]" />
-
-            {/* 위쪽 조명 약하게 */}
-            <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_50%_0%,#ffffff55_0%,#ffffff18_38%,#ffffff00_68%)]" />
-
-            {/* 좌측 glow 약하게 */}
-            <div className="pointer-events-none absolute left-[-10%] top-[10%] z-0 h-[32vw] w-[32vw] rounded-full bg-white/12 blur-3xl" />
-
-            {/* 우측 glow 약하게 */}
-            <div className="pointer-events-none absolute right-[-8%] bottom-[-10%] z-0 h-[28vw] w-[28vw] rounded-full bg-white/10 blur-3xl" />
           </div>
 
-          {/* 버블 */}
-          <motion.div
-            initial={false}
-            animate={{
-              opacity: introDone && !launching ? 1 : 0,
-              filter: introDone && !launching ? "blur(0px)" : "blur(10px)",
-              scale: introDone && !launching ? 1 : 1.02,
-            }}
-            transition={{ duration: 0.52, delay: 0.06, ease: "easeInOut" }}
-            className="pointer-events-none absolute inset-0 z-[60]"
-          >
-            <FloatingBubbles
-              bubbles={bubbleData}
-              onOpen={handleBubbleOpen}
-              onHover={introDone && !launching ? setLookTarget : () => null}
-            />
-          </motion.div>
+          {introDone && enableBubbles ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: launching ? 0 : 1 }}
+              transition={{ duration: 0.35 }}
+              className="pointer-events-none absolute inset-0 z-[60]"
+            >
+              <FloatingBubbles
+                bubbles={bubbleData}
+                onOpen={handleBubbleOpen}
+                onHover={() => null}
+              />
+            </motion.div>
+          ) : null}
 
-          <div className="relative z-20 mx-auto grid min-h-screen w-full max-w-[1600px] grid-cols-1 items-center gap-10 px-8 pb-14 pt-28 lg:grid-cols-[0.95fr_1.05fr] lg:px-16">
-            {/* 왼쪽 텍스트 */}
+          <div className="relative z-20 mx-auto grid min-h-screen w-full max-w-[1600px] grid-cols-1 items-center gap-10 px-8 pb-14 pt-28 lg:grid-cols-[0.88fr_1.12fr] lg:px-16">
             <motion.div
               initial={false}
               animate={{
                 opacity: introDone ? (launching ? 0 : 1) : 0,
-                y: introDone ? (launching ? -16 : 0) : 24,
-                filter: introDone
-                  ? launching
-                    ? "blur(8px)"
-                    : "blur(0px)"
-                  : "blur(12px)",
+                y: introDone ? (launching ? -14 : 0) : 24,
+                scale: introDone ? 1 : 1.02,
               }}
-              transition={{ duration: 0.58, delay: 0.14, ease: "easeOut" }}
+              transition={{ duration: 0.5, delay: 0.12, ease: "easeOut" }}
               className="relative z-20 max-w-[620px] pointer-events-none"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/90">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/92 drop-shadow-[0_2px_8px_rgba(0,0,0,0.16)]">
                 HEALTH JOURNEY
               </p>
 
-              <h1 className="mt-5 bg-gradient-to-r from-white via-white/95 to-white/78 bg-clip-text text-5xl font-bold leading-[1.02] text-transparent md:text-7xl lg:text-[92px]">
+              <h1 className="mt-5 text-5xl font-bold leading-[1.02] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.18)] md:text-7xl lg:text-[92px]">
                 My
                 <br />
                 Health
@@ -246,7 +236,7 @@ export default function HomePage() {
                 Buddy
               </h1>
 
-              <p className="mt-6 max-w-[560px] text-base leading-8 text-white/88">
+              <p className="mt-6 max-w-[560px] text-base leading-8 text-white/95 drop-shadow-[0_2px_10px_rgba(0,0,0,0.14)]">
                 심혈관 건강, 어렵게 생각하지 말아요
                 <br />
                 작은 습관 하나부터 시작해서 나만의 건강 루틴을 만들어봐요
@@ -263,95 +253,148 @@ export default function HomePage() {
                   onClick={handleAnalyze}
                   whileHover={!launching ? { y: -2, scale: 1.03 } : {}}
                   whileTap={!launching ? { scale: 0.985 } : {}}
-                  className="group relative overflow-hidden rounded-full border border-white/45 bg-white/22 px-8 py-4 text-sm font-semibold text-white shadow-[0_18px_44px_rgba(0,0,0,0.10)] backdrop-blur-2xl transition hover:bg-white/30"
+                  className="
+                    group relative overflow-hidden
+                    rounded-full
+                    border border-white/60
+                    bg-white/30
+                    px-8 py-4
+                    text-sm font-semibold
+                    text-[#1F5C45]
+                    backdrop-blur-md
+                    shadow-[0_12px_30px_rgba(22,49,38,0.12)]
+                    transition
+                    hover:bg-white/40
+                    hover:shadow-[0_16px_40px_rgba(22,49,38,0.18)]
+                    active:scale-[0.97]
+                  "
                 >
-                  <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.48),rgba(255,255,255,0.16)_42%,rgba(255,255,255,0.04))]" />
-                  <span className="absolute inset-[1px] rounded-full border border-white/50" />
                   <span className="relative z-10">
-                    {launching ? "건강 분석 화면으로 이동 중..." : "심혈관 건강 분석하기"}
+                    {launching
+                      ? "건강 분석 화면으로 이동 중..."
+                      : "심혈관 건강 분석하기"}
                   </span>
                 </motion.button>
               </div>
             </motion.div>
 
-            {/* 오른쪽 캐릭터 */}
-            {/* <motion.div
+            <motion.div
               initial={false}
               animate={{
                 opacity: introDone ? (launching ? 0 : 1) : 0,
-                y: introDone ? (launching ? -8 : 0) : 30,
-                filter: introDone
-                  ? launching
-                    ? "blur(8px)"
-                    : "blur(0px)"
-                  : "blur(14px)",
-                scale: introDone ? 1 : 0.96,
+                y: introDone ? (launching ? -8 : 42) : 64,
+                x: introDone ? (launching ? 12 : 42) : 76,
+                scale: introDone ? 1 : 0.97,
               }}
-              transition={{ duration: 0.72, delay: 0.24, ease: "easeInOut" }}
-              className="relative z-20 flex items-center justify-center lg:justify-end pointer-events-none"
+              transition={{ duration: 0.58, delay: 0.24, ease: "easeOut" }}
+              className="relative z-20 flex items-end justify-center lg:justify-end pointer-events-none"
             >
-              <div className="relative flex w-full max-w-[680px] items-center justify-center">
+              <div className="relative flex w-full max-w-[820px] items-end justify-center lg:justify-end">
                 <motion.div
                   animate={
                     launching
-                      ? { scale: [1, 1.18, 0.36], opacity: [1, 1, 0.86] }
-                      : { scale: 1, opacity: 1 }
+                      ? { scale: [1, 1.06, 0.94], opacity: [1, 1, 0.94] }
+                      : { scale: [1, 1.01, 1] }
                   }
-                  transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
+                  transition={
+                    launching
+                      ? { duration: 0.7, ease: [0.22, 1, 0.36, 1] }
+                      : {
+                          duration: 3.4,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }
+                  }
                   className="relative"
                 >
                   <motion.div
                     animate={
                       launching
-                        ? { scale: [1, 1.52, 0.42], opacity: [0.2, 0.58, 0] }
-                        : { scale: [1, 1.06, 1], opacity: [0.16, 0.3, 0.16] }
+                        ? { scale: [1, 1.14, 0.88], opacity: [0.12, 0.22, 0] }
+                        : { scale: [1, 1.03, 1], opacity: [0.1, 0.18, 0.1] }
                     }
                     transition={
                       launching
-                        ? { duration: 0.95, ease: "easeInOut" }
+                        ? { duration: 0.8, ease: "easeInOut" }
                         : {
                             duration: 3.2,
                             repeat: Infinity,
                             ease: "easeInOut",
                           }
                     }
-                    className="absolute left-1/2 top-1/2 h-[360px] w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.30)_0%,rgba(255,255,255,0.10)_42%,transparent_72%)] blur-2xl"
+                    className="absolute left-1/2 top-1/2 h-[320px] w-[320px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.22)_0%,rgba(199,255,220,0.15)_28%,rgba(255,255,255,0.06)_48%,transparent_72%)] blur-2xl"
                   />
 
                   {launching && (
                     <div className="pointer-events-none absolute inset-0">
                       {particles.map((p) => (
-                         <motion.span
-                           key={p.id}
-                           initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
-                           animate={{
-                             opacity: [0, 1, 0],
-                             scale: [0.4, 1, 0.7],
-                             x: p.x,
-                             y: p.y,
-                           }}
-                           transition={{
-                             duration: 0.9,
-                             delay: p.delay,
-                             ease: "easeOut",
-                           }}
-                           className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/90 shadow-[0_0_14px_rgba(255,255,255,0.85)]"
-                         />
-                       ))}
-                     </div>
-                   )}
+                        <motion.span
+                          key={p.id}
+                          initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
+                          animate={{
+                            opacity: [0, 1, 0],
+                            scale: [0.4, 1, 0.7],
+                            x: p.x,
+                            y: p.y,
+                          }}
+                          transition={{
+                            duration: 0.8,
+                            delay: p.delay,
+                            ease: "easeOut",
+                          }}
+                          className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/90 shadow-[0_0_14px_rgba(255,255,255,0.85)]"
+                        />
+                      ))}
+                    </div>
+                  )}
 
-                   <HamsterIntro3D
-                     lookTarget={lookTarget}
-                     jumpTrigger={jumpTrigger}
-                   />
-                 </motion.div>
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{
+                      y: introDone ? 0 : 10,
+                      opacity: introDone ? 1 : 0,
+                    }}
+                    transition={{ duration: 0.45, delay: 0.42, ease: "easeOut" }}
+                    className="absolute left-[-2%] top-[-18%] z-30"
+                  >
+                    <div className="relative w-[210px] rounded-[26px] border border-white/35 bg-white/18 px-5 py-4 shadow-[0_16px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl md:w-[236px]">
+                      <div className="absolute inset-0 rounded-[26px] bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08))]" />
+
+                      <div className="relative z-10">
+                        <p className="text-sm font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
+                          반가워요 🐹
+                        </p>
+                        <p className="mt-1 text-sm text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.12)]">
+                          저는 Buddy예요
+                        </p>
+                        <p className="mt-3 text-[18px] font-bold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
+                          떠다니는 큰 비눗방울을
+                          <br />
+                          눌러볼까요?
+                        </p>
+                      </div>
+
+                      <div className="absolute bottom-[-8px] left-[60%] h-4 w-4 -translate-x-1/2 rotate-45 border-r border-b border-white/35 bg-white/18 backdrop-blur-xl" />
+                    </div>
+                  </motion.div>
+
+                  <div className="relative w-[340px] sm:w-[410px] lg:w-[500px]">
+                    <Image
+                      src="/images/hamster-bubble.png"
+                      alt="MyHealthBuddy 햄스터 캐릭터"
+                      width={500}
+                      height={500}
+                      priority
+                      sizes="(max-width: 640px) 340px, (max-width: 1024px) 410px, 500px"
+                      className="h-auto w-full object-contain drop-shadow-[0_22px_46px_rgba(0,0,0,0.10)]"
+                    />
+                  </div>
+                </motion.div>
               </div>
-            </motion.div> */}
+            </motion.div>
           </div>
         </section>
 
-        {/* SECTION 2~5 */}
         {showcaseSections.map((section, index) => (
           <ShowcaseSection
             key={section.id}
@@ -360,14 +403,13 @@ export default function HomePage() {
           />
         ))}
 
-        {/* SECTION 6 */}
         <section className="relative px-4 pb-28 pt-20 md:px-10">
           <div className="mx-auto max-w-[1120px]">
             <motion.div
-              initial={{ opacity: 0, y: 40, filter: "blur(8px)" }}
-              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.28 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
+              transition={{ duration: 0.65, ease: "easeOut" }}
               className="relative overflow-hidden rounded-[42px]"
             >
               <ArrivalBackground />
@@ -428,10 +470,10 @@ function ShowcaseSection({
   return (
     <section className="relative z-20 mx-auto flex min-h-[92vh] w-full max-w-7xl items-center px-4 py-10 sm:px-6">
       <motion.div
-        initial={{ opacity: 0, y: 40, filter: "blur(8px)" }}
-        whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        initial={{ opacity: 0, y: 28 }}
+        whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.22 }}
-        transition={{ duration: 0.75, ease: "easeOut" }}
+        transition={{ duration: 0.62, ease: "easeOut" }}
         className="relative w-full"
       >
         <SectionBackdrop />
@@ -679,14 +721,8 @@ function SectionBackdrop() {
 function ArrivalBackground() {
   return (
     <>
-      <div
-        className="absolute inset-0 rounded-[42px] bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: "url('/images/skygreen.png')",
-        }}
-      />
-      <div className="absolute inset-0 rounded-[42px] bg-[linear-gradient(180deg,rgba(255,255,255,0.18)_0%,rgba(255,255,255,0.38)_100%)]" />
-      <div className="pointer-events-none absolute inset-0 rounded-[42px] bg-[radial-gradient(circle_at_50%_20%,rgba(255,230,180,0.4)_0%,rgba(255,230,180,0.15)_30%,transparent_65%)]" />
+      <div className="absolute inset-0 rounded-[42px] bg-[linear-gradient(135deg,#eef8ef_0%,#f8fcf8_100%)]" />
+      <div className="absolute inset-0 rounded-[42px] bg-[radial-gradient(circle_at_50%_20%,rgba(160,220,175,0.18)_0%,rgba(160,220,175,0.06)_30%,transparent_65%)]" />
     </>
   );
 }
