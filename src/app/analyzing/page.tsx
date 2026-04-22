@@ -16,6 +16,8 @@ import {
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
+import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 const messages = [
   "건강검진 수치를 읽고 있어요",
@@ -24,9 +26,7 @@ const messages = [
 ];
 
 function isSuccessResult(result: AnalysisResultResponse | null | undefined) {
-  const status = String(
-    result?.status ?? result?.data?.status ?? ""
-  ).toUpperCase();
+  const status = String(result?.status ?? result?.data?.status ?? "").toUpperCase();
 
   return (
     status === "SUCCESS" ||
@@ -37,9 +37,7 @@ function isSuccessResult(result: AnalysisResultResponse | null | undefined) {
 }
 
 function isPendingResult(result: AnalysisResultResponse | null | undefined) {
-  const status = String(
-    result?.status ?? result?.data?.status ?? ""
-  ).toUpperCase();
+  const status = String(result?.status ?? result?.data?.status ?? "").toUpperCase();
 
   return (
     status === "" ||
@@ -123,9 +121,13 @@ export default function AnalyzingPage() {
     };
 
     const saveAndMoveToResult = (result: AnalysisResultResponse) => {
-      if (storage.getAccessToken()) {
+      const isLoggedIn = Boolean(storage.getAccessToken());
+
+      if (isLoggedIn) {
         analysisStorage.setResult(result);
         analysisStorage.clearTaskStore();
+        useAccessStore.getState().markAnalysisComplete();
+        markHealthFlowComplete();
       } else {
         guestAnalysisStorage.setResult(result);
         guestAnalysisStorage.clearTaskId();
@@ -140,9 +142,7 @@ export default function AnalyzingPage() {
       const storedTask = analysisStorage.getTaskStore();
 
       if (storedTask?.recordId) {
-        const recordResult = await getAnalysisResultByRecordId(
-          storedTask.recordId
-        );
+        const recordResult = await getAnalysisResultByRecordId(storedTask.recordId);
 
         if (isSuccessResult(recordResult)) {
           saveAndMoveToResult(recordResult);
@@ -224,8 +224,9 @@ export default function AnalyzingPage() {
 
         if (cancelled || !mountedRef.current || finishedRef.current) return;
 
-        if (result?.error) {
-          setErrorMessage(String(result.error));
+        if ((result as any)?.error) {
+          console.error("건강 분석 API 에러:", (result as any).error);
+          setErrorMessage("분석 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.");
           scheduleRetry(3000);
           return;
         }
@@ -242,7 +243,7 @@ export default function AnalyzingPage() {
           return;
         }
 
-        setErrorMessage(`알 수 없는 분석 상태입니다: ${result?.status ?? "-"}`);
+        setErrorMessage("분석 상태를 다시 확인하고 있어요.");
         scheduleRetry(3000);
       } catch (error) {
         console.error("건강 분석 polling 실패:", error);

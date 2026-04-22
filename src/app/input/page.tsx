@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   requestGuestHealthAnalysis,
@@ -12,6 +12,7 @@ import { createInitialProfile, updateUserProfile } from "@/src/api/user";
 import { requestUserHealthAnalysis } from "@/src/api/analysis";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { storage } from "@/src/utils/storage";
+import { clearHealthFlowComplete } from "@/src/utils/health-flow";
 
 type Gender = "" | "여성" | "남성";
 type YesNo = "" | "예" | "아니오";
@@ -36,6 +37,32 @@ type FormState = {
   exerciseDetail: string;
 };
 
+type FieldErrors = Partial<Record<keyof FormState, string>>;
+type FieldTouched = Partial<Record<keyof FormState, boolean>>;
+
+type UserProfileResponse = {
+  nickname?: string;
+  gender?: string;
+  birth_year?: number | string;
+  birthYear?: number | string;
+  profile_image?: string;
+};
+
+type HealthRecordResponse = {
+  record_id?: number;
+  systolic_bp?: number;
+  diastolic_bp?: number;
+  total_cholesterol?: number;
+  glucose?: number;
+  height?: number;
+  weight?: number;
+  smoke_yn?: boolean;
+  alcohol_yn?: boolean;
+  exercise_yn?: boolean;
+};
+
+const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
+
 const initialForm: FormState = {
   nickname: "",
   gender: "",
@@ -57,17 +84,165 @@ const initialForm: FormState = {
 };
 
 const totalSteps = 4;
+const currentYear = new Date().getFullYear();
+
+const RANGE = {
+  birthYear: { min: 1900, max: currentYear },
+  height: { min: 100, max: 250 },
+  weight: { min: 20, max: 300 },
+  systolic: { min: 60, max: 260 },
+  diastolic: { min: 30, max: 180 },
+  fastingGlucose: { min: 40, max: 500 },
+  totalCholesterol: { min: 80, max: 500 },
+};
 
 const isValidTwoToFourDigits = (value: string) =>
   /^\d{2,4}$/.test(value.trim());
+
+function parseNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isInRange(value: string, min: number, max: number) {
+  const parsed = parseNumber(value);
+  if (parsed == null) return false;
+  return parsed >= min && parsed <= max;
+}
+
+function toDisplayGender(value?: string | null): Gender {
+  if (!value) return "";
+  if (value === "M" || value === "남" || value === "남성") return "남성";
+  if (value === "F" || value === "여" || value === "여성") return "여성";
+  return "";
+}
+
+function toDisplayYesNo(value?: boolean | null): YesNo {
+  if (value === true) return "예";
+  if (value === false) return "아니오";
+  return "";
+}
+
+function toDisplayNumber(value?: number | string | null) {
+  if (value == null) return "";
+  return String(value);
+}
+
+// 현재 프로젝트에 getProfile API helper가 없다고 가정하고 직접 조회
+async function fetchMyProfile(): Promise<UserProfileResponse | null> {
+  if (typeof window === "undefined") return null;
+
+  const token = storage.getAccessToken();
+  if (!token) return null;
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/users/profile`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    return json?.data ?? json ?? null;
+  } catch (error) {
+    console.warn("프로필 조회 실패:", error);
+    return null;
+  }
+}
 
 export default function InputPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
+  const [prefilling, setPrefilling] = useState(true);
+  const [touched, setTouched] = useState<FieldTouched>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const [hasExistingProfile, setHasExistingProfile] = useState(false);
+  const [latestRecordId, setLatestRecordId] = useState<number | null>(null);
 
   const progress = ((step + 1) / totalSteps) * 100;
+
+  // 로그인 사용자인 경우 기존 프로필 + 최근 건강기록 자동 반영
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const token = storage.getAccessToken();
+
+      if (!token) {
+        if (!cancelled) setPrefilling(false);
+        return;
+      }
+
+      try {
+        const [profile, records] = await Promise.all([
+          fetchMyProfile(),
+          getHealthRecords(),
+        ]);
+
+        if (cancelled) return;
+
+        const latestRecord =
+          Array.isArray(records) && records.length > 0
+            ? (records[0] as HealthRecordResponse)
+            : null;
+
+        setForm((prev) => ({
+          ...prev,
+          nickname: profile?.nickname ?? "",
+          gender: toDisplayGender(profile?.gender),
+          birthYear: toDisplayNumber(
+            profile?.birth_year ?? profile?.birthYear ?? ""
+          ),
+
+          height: toDisplayNumber(latestRecord?.height),
+          weight: toDisplayNumber(latestRecord?.weight),
+          systolic: toDisplayNumber(latestRecord?.systolic_bp),
+          diastolic: toDisplayNumber(latestRecord?.diastolic_bp),
+          fastingGlucose: toDisplayNumber(latestRecord?.glucose),
+          totalCholesterol: toDisplayNumber(latestRecord?.total_cholesterol),
+
+          smoking: toDisplayYesNo(latestRecord?.smoke_yn),
+          smokingDetail: "",
+          drinking: toDisplayYesNo(latestRecord?.alcohol_yn),
+          drinkingDetail: "",
+          exercise: toDisplayYesNo(latestRecord?.exercise_yn),
+          exerciseDetail: "",
+        }));
+
+        const profileExists = Boolean(
+          profile?.nickname ||
+            profile?.gender ||
+            profile?.birth_year ||
+            profile?.birthYear
+        );
+
+        setHasExistingProfile(profileExists);
+        setLatestRecordId(latestRecord?.record_id ?? null);
+      } catch (error) {
+        console.warn("input 초기값 불러오기 실패:", error);
+      } finally {
+        if (!cancelled) setPrefilling(false);
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const guideMessage = useMemo(() => {
     if (step === 0) {
@@ -87,40 +262,160 @@ export default function InputPage() {
     if (step === 2) {
       return {
         eyebrow: "buddy guide",
-        title: "생활습관도 함께 볼게요",
-        desc: "흡연, 음주, 운동 습관은 중요한 건강 신호예요.",
+        title: "생활습관을 체크해볼게요",
+        desc: "흡연, 음주, 운동 습관은 건강 상태를 이해하는 데 중요한 정보예요.",
       };
     }
     return {
       eyebrow: "buddy guide",
-      title: "이제 확인만 하면 돼요",
-      desc: "입력한 내용을 확인하고 건강 분석을 시작해요.",
+      title: "이제 입력 내용을 확인해요",
+      desc: "입력한 정보를 한 번 더 확인하고 건강 분석을 시작해요.",
     };
   }, [step]);
 
-  const isBasicValid = Boolean(
-    form.nickname.trim() &&
-      form.gender &&
-      form.birthYear.trim() &&
-      form.height.trim() &&
-      form.weight.trim()
-  );
+  const guideVisual = useMemo(() => {
+    if (step === 3) {
+      return {
+        imageSrc: "/images/buddy-review.png",
+        imageAlt: "입력 내용을 확인하는 버디",
+      };
+    }
 
-  const isHealthValid = Boolean(
-    isValidTwoToFourDigits(form.systolic) &&
-      isValidTwoToFourDigits(form.diastolic) &&
-      isValidTwoToFourDigits(form.fastingGlucose) &&
-      isValidTwoToFourDigits(form.totalCholesterol)
-  );
+    return {
+      imageSrc: "/images/buddy-input.png",
+      imageAlt: "입력을 안내하는 버디",
+    };
+  }, [step]);
 
-  const isHabitValid = Boolean(
-    form.smoking &&
-      form.drinking &&
-      form.exercise &&
-      (form.smoking === "아니오" || form.smokingDetail.trim()) &&
-      (form.drinking === "아니오" || form.drinkingDetail.trim()) &&
-      (form.exercise === "아니오" || form.exerciseDetail.trim())
-  );
+  const errors = useMemo<FieldErrors>(() => {
+    const nextErrors: FieldErrors = {};
+
+    if (!form.nickname.trim()) {
+      nextErrors.nickname = "닉네임을 입력해주세요.";
+    }
+
+    if (!form.gender) {
+      nextErrors.gender = "성별을 선택해주세요.";
+    }
+
+    if (!form.birthYear.trim()) {
+      nextErrors.birthYear = "출생연도를 입력해주세요.";
+    } else if (!/^\d{4}$/.test(form.birthYear.trim())) {
+      nextErrors.birthYear = "출생연도는 4자리 숫자로 입력해주세요.";
+    } else if (
+      !isInRange(form.birthYear, RANGE.birthYear.min, RANGE.birthYear.max)
+    ) {
+      nextErrors.birthYear = `출생연도는 ${RANGE.birthYear.min}년부터 ${RANGE.birthYear.max}년 사이로 입력해주세요.`;
+    }
+
+    if (!form.height.trim()) {
+      nextErrors.height = "신장을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.height)) {
+      nextErrors.height = "신장은 숫자로 입력해주세요.";
+    } else if (!isInRange(form.height, RANGE.height.min, RANGE.height.max)) {
+      nextErrors.height = `신장은 ${RANGE.height.min}cm부터 ${RANGE.height.max}cm 사이로 입력해주세요.`;
+    }
+
+    if (!form.weight.trim()) {
+      nextErrors.weight = "체중을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.weight)) {
+      nextErrors.weight = "체중은 숫자로 입력해주세요.";
+    } else if (!isInRange(form.weight, RANGE.weight.min, RANGE.weight.max)) {
+      nextErrors.weight = `체중은 ${RANGE.weight.min}kg부터 ${RANGE.weight.max}kg 사이로 입력해주세요.`;
+    }
+
+    if (!form.systolic.trim()) {
+      nextErrors.systolic = "수축기 혈압을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.systolic)) {
+      nextErrors.systolic = "수축기 혈압은 숫자로 입력해주세요.";
+    } else if (
+      !isInRange(form.systolic, RANGE.systolic.min, RANGE.systolic.max)
+    ) {
+      nextErrors.systolic = `수축기 혈압은 ${RANGE.systolic.min}부터 ${RANGE.systolic.max} 사이로 입력해주세요.`;
+    }
+
+    if (!form.diastolic.trim()) {
+      nextErrors.diastolic = "이완기 혈압을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.diastolic)) {
+      nextErrors.diastolic = "이완기 혈압은 숫자로 입력해주세요.";
+    } else if (
+      !isInRange(form.diastolic, RANGE.diastolic.min, RANGE.diastolic.max)
+    ) {
+      nextErrors.diastolic = `이완기 혈압은 ${RANGE.diastolic.min}부터 ${RANGE.diastolic.max} 사이로 입력해주세요.`;
+    }
+
+    if (!form.fastingGlucose.trim()) {
+      nextErrors.fastingGlucose = "공복 혈당을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.fastingGlucose)) {
+      nextErrors.fastingGlucose = "공복 혈당은 숫자로 입력해주세요.";
+    } else if (
+      !isInRange(
+        form.fastingGlucose,
+        RANGE.fastingGlucose.min,
+        RANGE.fastingGlucose.max
+      )
+    ) {
+      nextErrors.fastingGlucose = `공복 혈당은 ${RANGE.fastingGlucose.min}부터 ${RANGE.fastingGlucose.max} 사이로 입력해주세요.`;
+    }
+
+    if (!form.totalCholesterol.trim()) {
+      nextErrors.totalCholesterol = "총 콜레스테롤을 입력해주세요.";
+    } else if (!isValidTwoToFourDigits(form.totalCholesterol)) {
+      nextErrors.totalCholesterol = "총 콜레스테롤은 숫자로 입력해주세요.";
+    } else if (
+      !isInRange(
+        form.totalCholesterol,
+        RANGE.totalCholesterol.min,
+        RANGE.totalCholesterol.max
+      )
+    ) {
+      nextErrors.totalCholesterol = `총 콜레스테롤은 ${RANGE.totalCholesterol.min}부터 ${RANGE.totalCholesterol.max} 사이로 입력해주세요.`;
+    }
+
+    if (!form.smoking) {
+      nextErrors.smoking = "흡연 여부를 선택해주세요.";
+    } else if (form.smoking === "예" && !form.smokingDetail.trim()) {
+      nextErrors.smokingDetail = "흡연 빈도를 선택해주세요.";
+    }
+
+    if (!form.drinking) {
+      nextErrors.drinking = "음주 여부를 선택해주세요.";
+    } else if (form.drinking === "예" && !form.drinkingDetail.trim()) {
+      nextErrors.drinkingDetail = "음주 빈도를 선택해주세요.";
+    }
+
+    if (!form.exercise) {
+      nextErrors.exercise = "운동 여부를 선택해주세요.";
+    } else if (form.exercise === "예" && !form.exerciseDetail.trim()) {
+      nextErrors.exerciseDetail = "운동 빈도를 선택해주세요.";
+    }
+
+    return nextErrors;
+  }, [form]);
+
+  const visibleError = (field: keyof FormState) =>
+    touched[field] || submitAttempted ? errors[field] : undefined;
+
+  const isBasicValid =
+    !errors.nickname &&
+    !errors.gender &&
+    !errors.birthYear &&
+    !errors.height &&
+    !errors.weight;
+
+  const isHealthValid =
+    !errors.systolic &&
+    !errors.diastolic &&
+    !errors.fastingGlucose &&
+    !errors.totalCholesterol;
+
+  const isHabitValid =
+    !errors.smoking &&
+    !errors.smokingDetail &&
+    !errors.drinking &&
+    !errors.drinkingDetail &&
+    !errors.exercise &&
+    !errors.exerciseDetail;
 
   const isAllValid = isBasicValid && isHealthValid && isHabitValid;
 
@@ -137,7 +432,41 @@ export default function InputPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const touchFields = (keys: (keyof FormState)[]) => {
+    setTouched((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = true;
+      });
+      return next;
+    });
+  };
+
   const handleNext = () => {
+    if (step === 0) {
+      touchFields(["nickname", "gender", "birthYear", "height", "weight"]);
+    }
+
+    if (step === 1) {
+      touchFields([
+        "systolic",
+        "diastolic",
+        "fastingGlucose",
+        "totalCholesterol",
+      ]);
+    }
+
+    if (step === 2) {
+      touchFields([
+        "smoking",
+        "smokingDetail",
+        "drinking",
+        "drinkingDetail",
+        "exercise",
+        "exerciseDetail",
+      ]);
+    }
+
     if (step < totalSteps - 1 && canGoNext) {
       setStep((prev) => prev + 1);
     }
@@ -195,6 +524,25 @@ export default function InputPage() {
   };
 
   const handleAnalyze = async () => {
+    setSubmitAttempted(true);
+    touchFields([
+      "nickname",
+      "gender",
+      "birthYear",
+      "height",
+      "weight",
+      "systolic",
+      "diastolic",
+      "fastingGlucose",
+      "totalCholesterol",
+      "smoking",
+      "smokingDetail",
+      "drinking",
+      "drinkingDetail",
+      "exercise",
+      "exerciseDetail",
+    ]);
+
     if (!isAllValid || submitting) return;
 
     try {
@@ -208,18 +556,31 @@ export default function InputPage() {
         guestAnalysisPayload,
       } = buildCommonPayload();
 
+      clearHealthFlowComplete();
       sessionStorage.removeItem("health-analysis-task");
       sessionStorage.removeItem("health-analysis-result");
 
+      // 비회원: guest 분석 흐름
       if (!token) {
         const guestNickname = form.nickname.trim();
         const guestBirthYear = Number(form.birthYear);
+
+        sessionStorage.setItem(
+          GUEST_MIGRATION_KEY,
+          JSON.stringify({
+            nickname: form.nickname.trim(),
+            gender: genderForUser,
+            birthYear,
+            healthPayload,
+          })
+        );
 
         sessionStorage.setItem(
           "guest-profile",
           JSON.stringify({
             nickname: guestNickname,
             birthYear: guestBirthYear,
+            birth_year: guestBirthYear,
           })
         );
 
@@ -248,40 +609,25 @@ export default function InputPage() {
         return;
       }
 
-      try {
+      // 회원: 프로필이 있으면 update, 없으면 initial 생성
+      if (hasExistingProfile) {
+        await updateUserProfile({
+          nickname: form.nickname.trim(),
+          birth_year: birthYear,
+        });
+      } else {
         await createInitialProfile({
           nickname: form.nickname.trim(),
           gender: genderForUser,
           birth_year: birthYear,
         });
-      } catch (error: any) {
-        const status = error?.response?.status ?? error?.status ?? null;
-
-        if (status === 409) {
-          try {
-            await updateUserProfile({
-              nickname: form.nickname.trim(),
-              birth_year: birthYear,
-            });
-          } catch (patchError) {
-            console.warn("프로필 업데이트 실패 (분석은 계속 진행):", patchError);
-          }
-        } else {
-          throw error;
-        }
       }
 
-      const recordsBeforeSave = await getHealthRecords();
-      const latestRecordBeforeSave =
-        Array.isArray(recordsBeforeSave) && recordsBeforeSave.length > 0
-          ? recordsBeforeSave[0]
-          : null;
+      // 회원: 건강기록이 있으면 patch, 없으면 create
+      let savedRecordId: number | null = latestRecordId;
 
-      let savedRecordId: number | null = null;
-
-      if (latestRecordBeforeSave?.record_id) {
-        await patchHealthRecord(latestRecordBeforeSave.record_id, healthPayload);
-        savedRecordId = latestRecordBeforeSave.record_id;
+      if (latestRecordId) {
+        await patchHealthRecord(latestRecordId, healthPayload);
       } else {
         const createdRecord = await createHealthRecord(healthPayload);
         savedRecordId = extractRecordId(createdRecord);
@@ -290,10 +636,10 @@ export default function InputPage() {
           const recordsAfterCreate = await getHealthRecords();
           const newestRecord =
             Array.isArray(recordsAfterCreate) && recordsAfterCreate.length > 0
-              ? recordsAfterCreate[0]
+              ? (recordsAfterCreate[0] as HealthRecordResponse)
               : null;
 
-          savedRecordId = extractRecordId(newestRecord);
+          savedRecordId = newestRecord?.record_id ?? null;
         }
       }
 
@@ -313,14 +659,12 @@ export default function InputPage() {
       }
 
       sessionStorage.setItem(
-          "health-analysis-task",
+        "health-analysis-task",
         JSON.stringify({
           taskId,
           recordId: savedRecordId,
         })
       );
-
-      sessionStorage.setItem("health-flow-complete", "true");
 
       router.push("/analyzing");
     } catch (error) {
@@ -364,48 +708,65 @@ export default function InputPage() {
         <div className="mt-10 flex justify-center">
           <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
             <aside className="hidden lg:flex lg:justify-end">
-              <div className="mt-6 flex items-start gap-4">
-                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[32px] border border-white/40 bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.55),rgba(255,255,255,0.12)),linear-gradient(180deg,#c8f7d8,#9ee5b7)] text-4xl shadow-[0_16px_40px_rgba(131,182,149,0.12)]">
-                  🐹
-                </div>
-
-                <div className="relative mt-3 max-w-[180px] rounded-[24px] border border-white/40 bg-white/72 px-4 py-4 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
+              <div className="mt-6 flex items-end gap-4">
+                <div className="relative mt-4 w-[220px] rounded-[24px] border border-white/40 bg-white/72 px-5 py-5 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
                   <p className="text-sm font-medium text-[#2E7D5B]">
                     {guideMessage.eyebrow}
                   </p>
-                  <p className="mt-2 text-lg font-bold leading-snug text-[#163126]">
+                  <p className="mt-2 text-[17px] font-bold leading-[1.45] text-[#163126] whitespace-normal break-keep">
                     {guideMessage.title}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-[#163126]/68">
+                  <p className="mt-3 text-sm leading-7 text-[#163126]/68 whitespace-normal break-keep">
                     {guideMessage.desc}
                   </p>
-                  <div className="absolute left-[-8px] top-8 h-4 w-4 rotate-45 border-b border-l border-white/40 bg-white/72" />
+                  <div className="absolute right-[-8px] top-8 h-4 w-4 rotate-45 border-r border-t border-white/40 bg-white/72" />
+                </div>
+
+                <div className="flex h-[160px] w-[160px] shrink-0 items-end justify-center">
+                  <img
+                    src={guideVisual.imageSrc}
+                    alt={guideVisual.imageAlt}
+                    className="h-[150px] w-[150px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
+                  />
                 </div>
               </div>
             </aside>
 
             <div className="lg:hidden">
               <div className="mx-auto mb-6 flex max-w-3xl items-start gap-3 rounded-[24px] border border-white/40 bg-white/68 p-4 shadow-[0_14px_40px_rgba(22,49,38,0.06)] backdrop-blur-xl">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border border-white/40 bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.55),rgba(255,255,255,0.12)),linear-gradient(180deg,#c8f7d8,#9ee5b7)] text-2xl">
-                  🐹
-                </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-[#2E7D5B]">
                     {guideMessage.eyebrow}
                   </p>
-                  <p className="mt-1 text-base font-bold leading-snug text-[#163126]">
+                  <p className="mt-1 text-base font-bold leading-[1.5] text-[#163126] whitespace-normal break-keep">
                     {guideMessage.title}
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-[#163126]/68">
+                  <p className="mt-1 text-sm leading-6 text-[#163126]/68 whitespace-normal break-keep">
                     {guideMessage.desc}
                   </p>
+                </div>
+
+                <div className="flex h-[88px] w-[88px] shrink-0 items-end justify-center">
+                  <img
+                    src={guideVisual.imageSrc}
+                    alt={guideVisual.imageAlt}
+                    className="h-[78px] w-[78px] object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
+                  />
                 </div>
               </div>
             </div>
 
             <div className="w-full">
               <section className="mx-auto w-full max-w-3xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
-                {step === 0 && (
+                {prefilling ? (
+                  <div className="flex min-h-[360px] items-center justify-center">
+                    <p className="text-sm text-[#163126]/55">
+                      기존 입력 정보를 불러오는 중이에요...
+                    </p>
+                  </div>
+                ) : null}
+
+                {!prefilling && step === 0 && (
                   <div>
                     <StepHeader
                       eyebrow="basic info"
@@ -413,20 +774,32 @@ export default function InputPage() {
                       desc="최근 건강검진 수치와 생활습관 정보를 입력하면 결과를 분석해드려요."
                     />
 
+                    <p className="mb-5 text-xs leading-6 text-[#163126]/45 md:text-sm">
+                      키와 몸무게는 소수점 없이 입력해주세요. 소수점 값은 반올림해서 입력하면 돼요.
+                    </p>
+
                     <div className="grid gap-5 md:grid-cols-2">
                       <InputField
                         label="닉네임"
                         placeholder="사용하실 닉네임을 입력해주세요"
                         value={form.nickname}
                         onChange={(v) => updateField("nickname", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, nickname: true }))
+                        }
+                        error={visibleError("nickname")}
                       />
 
                       <SelectField
                         label="성별"
                         value={form.gender}
-                        onChange={(v) => updateField("gender", v as Gender)}
+                        onChange={(v) => {
+                          updateField("gender", v as Gender);
+                          setTouched((prev) => ({ ...prev, gender: true }));
+                        }}
                         options={["여성", "남성"]}
                         placeholder="선택해주세요"
+                        error={visibleError("gender")}
                       />
 
                       <InputField
@@ -434,7 +807,11 @@ export default function InputPage() {
                         placeholder="예: 1996"
                         value={form.birthYear}
                         onChange={(v) => updateField("birthYear", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, birthYear: true }))
+                        }
                         type="number"
+                        error={visibleError("birthYear")}
                       />
 
                       <InputField
@@ -442,7 +819,11 @@ export default function InputPage() {
                         placeholder="예: 170"
                         value={form.height}
                         onChange={(v) => updateField("height", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, height: true }))
+                        }
                         type="number"
+                        error={visibleError("height")}
                       />
 
                       <InputField
@@ -450,13 +831,17 @@ export default function InputPage() {
                         placeholder="예: 60"
                         value={form.weight}
                         onChange={(v) => updateField("weight", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, weight: true }))
+                        }
                         type="number"
+                        error={visibleError("weight")}
                       />
                     </div>
                   </div>
                 )}
 
-                {step === 1 && (
+                {!prefilling && step === 1 && (
                   <div>
                     <StepHeader
                       eyebrow="health metrics"
@@ -470,7 +855,11 @@ export default function InputPage() {
                         placeholder="예: 120"
                         value={form.systolic}
                         onChange={(v) => updateField("systolic", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, systolic: true }))
+                        }
                         type="number"
+                        error={visibleError("systolic")}
                       />
 
                       <InputField
@@ -478,7 +867,11 @@ export default function InputPage() {
                         placeholder="예: 80"
                         value={form.diastolic}
                         onChange={(v) => updateField("diastolic", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({ ...prev, diastolic: true }))
+                        }
                         type="number"
+                        error={visibleError("diastolic")}
                       />
 
                       <InputField
@@ -486,7 +879,14 @@ export default function InputPage() {
                         placeholder="예: 95"
                         value={form.fastingGlucose}
                         onChange={(v) => updateField("fastingGlucose", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({
+                            ...prev,
+                            fastingGlucose: true,
+                          }))
+                        }
                         type="number"
+                        error={visibleError("fastingGlucose")}
                       />
 
                       <InputField
@@ -494,13 +894,20 @@ export default function InputPage() {
                         placeholder="예: 180"
                         value={form.totalCholesterol}
                         onChange={(v) => updateField("totalCholesterol", v)}
+                        onBlur={() =>
+                          setTouched((prev) => ({
+                            ...prev,
+                            totalCholesterol: true,
+                          }))
+                        }
                         type="number"
+                        error={visibleError("totalCholesterol")}
                       />
                     </div>
                   </div>
                 )}
 
-                {step === 2 && (
+                {!prefilling && step === 2 && (
                   <div>
                     <StepHeader
                       eyebrow="lifestyle"
@@ -514,6 +921,7 @@ export default function InputPage() {
                         value={form.smoking}
                         onChange={(v) => {
                           updateField("smoking", v as YesNo);
+                          setTouched((prev) => ({ ...prev, smoking: true }));
                           if (v === "아니오") updateField("smokingDetail", "");
                         }}
                         detailValue={form.smokingDetail}
@@ -523,7 +931,15 @@ export default function InputPage() {
                           "하루 4-10개비",
                           "하루 10개비 이상",
                         ]}
-                        onDetailChange={(v) => updateField("smokingDetail", v)}
+                        onDetailChange={(v) => {
+                          updateField("smokingDetail", v);
+                          setTouched((prev) => ({
+                            ...prev,
+                            smokingDetail: true,
+                          }));
+                        }}
+                        error={visibleError("smoking")}
+                        detailError={visibleError("smokingDetail")}
                       />
 
                       <HabitBlock
@@ -531,12 +947,21 @@ export default function InputPage() {
                         value={form.drinking}
                         onChange={(v) => {
                           updateField("drinking", v as YesNo);
+                          setTouched((prev) => ({ ...prev, drinking: true }));
                           if (v === "아니오") updateField("drinkingDetail", "");
                         }}
                         detailValue={form.drinkingDetail}
                         detailPlaceholder="음주 빈도 선택"
                         detailOptions={["주 1회", "주 2~3회", "주 4회 이상"]}
-                        onDetailChange={(v) => updateField("drinkingDetail", v)}
+                        onDetailChange={(v) => {
+                          updateField("drinkingDetail", v);
+                          setTouched((prev) => ({
+                            ...prev,
+                            drinkingDetail: true,
+                          }));
+                        }}
+                        error={visibleError("drinking")}
+                        detailError={visibleError("drinkingDetail")}
                       />
 
                       <HabitBlock
@@ -544,6 +969,7 @@ export default function InputPage() {
                         value={form.exercise}
                         onChange={(v) => {
                           updateField("exercise", v as YesNo);
+                          setTouched((prev) => ({ ...prev, exercise: true }));
                           if (v === "아니오") updateField("exerciseDetail", "");
                         }}
                         detailValue={form.exerciseDetail}
@@ -554,13 +980,21 @@ export default function InputPage() {
                           "주 3~4회",
                           "주 5회 이상",
                         ]}
-                        onDetailChange={(v) => updateField("exerciseDetail", v)}
+                        onDetailChange={(v) => {
+                          updateField("exerciseDetail", v);
+                          setTouched((prev) => ({
+                            ...prev,
+                            exerciseDetail: true,
+                          }));
+                        }}
+                        error={visibleError("exercise")}
+                        detailError={visibleError("exerciseDetail")}
                       />
                     </div>
                   </div>
                 )}
 
-                {step === 3 && (
+                {!prefilling && step === 3 && (
                   <div>
                     <StepHeader
                       eyebrow="review"
@@ -618,7 +1052,7 @@ export default function InputPage() {
               <div className="mx-auto mt-8 flex w-full max-w-3xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   onClick={handlePrev}
-                  disabled={step === 0}
+                  disabled={step === 0 || prefilling}
                   className="w-full rounded-full border border-[#163126]/10 bg-white/72 px-6 py-3 text-sm font-semibold text-[#163126] transition disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto"
                 >
                   이전
@@ -627,7 +1061,7 @@ export default function InputPage() {
                 {step < totalSteps - 1 ? (
                   <button
                     onClick={handleNext}
-                    disabled={!canGoNext}
+                    disabled={!canGoNext || prefilling}
                     className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
                   >
                     다음
@@ -635,7 +1069,7 @@ export default function InputPage() {
                 ) : (
                   <button
                     onClick={handleAnalyze}
-                    disabled={!isAllValid || submitting}
+                    disabled={!isAllValid || submitting || prefilling}
                     className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
                   >
                     {submitting ? "분석 요청 중..." : "건강 분석하기"}
@@ -678,14 +1112,18 @@ function InputField({
   label,
   value,
   onChange,
+  onBlur,
   placeholder,
   type = "text",
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   placeholder: string;
   type?: string;
+  error?: string;
 }) {
   const isNumberField = type === "number";
 
@@ -698,6 +1136,7 @@ function InputField({
         type={isNumberField ? "text" : type}
         inputMode={isNumberField ? "numeric" : undefined}
         value={value}
+        onBlur={onBlur}
         onChange={(e) => {
           if (isNumberField) {
             const onlyNumber = e.target.value.replace(/\D/g, "");
@@ -710,8 +1149,15 @@ function InputField({
           onChange(e.target.value);
         }}
         placeholder={placeholder}
-        className="h-12 w-full rounded-xl border border-white/40 bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 focus:border-[#7EE8A7] sm:h-[52px] md:h-14 md:rounded-2xl md:px-5"
+        className={`h-12 w-full rounded-xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 sm:h-[52px] md:h-14 md:rounded-2xl md:px-5 ${
+          error
+            ? "border-[#e58b8b] focus:border-[#d8614d]"
+            : "border-white/40 focus:border-[#7EE8A7]"
+        }`}
       />
+      {error ? (
+        <p className="mt-2 text-xs leading-5 text-[#d8614d]">{error}</p>
+      ) : null}
     </label>
   );
 }
@@ -722,12 +1168,14 @@ function SelectField({
   onChange,
   options,
   placeholder,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
   placeholder: string;
+  error?: string;
 }) {
   return (
     <label className="block">
@@ -737,13 +1185,20 @@ function SelectField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-12 w-full rounded-xl border border-white/40 bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md focus:border-[#7EE8A7] sm:h-[52px] md:h-14 md:rounded-2xl md:px-5"
+        className={`h-12 w-full rounded-xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md sm:h-[52px] md:h-14 md:rounded-2xl md:px-5 ${
+          error
+            ? "border-[#e58b8b] focus:border-[#d8614d]"
+            : "border-white/40 focus:border-[#7EE8A7]"
+        }`}
       >
         <option value="">{placeholder}</option>
         {options.map((option) => (
           <option key={option}>{option}</option>
         ))}
       </select>
+      {error ? (
+        <p className="mt-2 text-xs leading-5 text-[#d8614d]">{error}</p>
+      ) : null}
     </label>
   );
 }
@@ -751,29 +1206,39 @@ function SelectField({
 function YesNoToggle({
   value,
   onChange,
+  error,
 }: {
   value: YesNo;
   onChange: (v: YesNo) => void;
+  error?: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-3">
-      {(["예", "아니오"] as const).map((item) => {
-        const active = value === item;
-        return (
-          <button
-            key={item}
-            type="button"
-            onClick={() => onChange(item)}
-            className={`rounded-2xl px-5 py-3 text-sm font-semibold transition ${
-              active
-                ? "bg-[#163126] text-white shadow-[0_12px_24px_rgba(22,49,38,0.12)]"
-                : "border border-white/40 bg-white/76 text-[#163126]/70"
-            }`}
-          >
-            {item}
-          </button>
-        );
-      })}
+    <div>
+      <div className="flex flex-wrap gap-3">
+        {(["예", "아니오"] as const).map((item) => {
+          const active = value === item;
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onChange(item)}
+              className={`rounded-2xl px-5 py-3 text-sm font-semibold transition ${
+                active
+                  ? "bg-[#163126] text-white shadow-[0_12px_24px_rgba(22,49,38,0.12)]"
+                  : error
+                  ? "border border-[#e58b8b] bg-white/76 text-[#163126]/70"
+                  : "border border-white/40 bg-white/76 text-[#163126]/70"
+              }`}
+            >
+              {item}
+            </button>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <p className="mt-2 text-xs leading-5 text-[#d8614d]">{error}</p>
+      ) : null}
     </div>
   );
 }
@@ -786,6 +1251,8 @@ function HabitBlock({
   detailPlaceholder,
   detailOptions,
   onDetailChange,
+  error,
+  detailError,
 }: {
   title: string;
   value: YesNo;
@@ -794,11 +1261,13 @@ function HabitBlock({
   detailPlaceholder: string;
   detailOptions: string[];
   onDetailChange: (v: string) => void;
+  error?: string;
+  detailError?: string;
 }) {
   return (
     <div className="rounded-[24px] border border-white/40 bg-white/48 p-4 backdrop-blur-xl md:rounded-[28px] md:p-5">
       <p className="mb-3 text-sm font-medium text-[#163126]/85">{title}</p>
-      <YesNoToggle value={value} onChange={onChange} />
+      <YesNoToggle value={value} onChange={onChange} error={error} />
 
       {value === "예" && (
         <div className="mt-4">
@@ -808,6 +1277,7 @@ function HabitBlock({
             onChange={onDetailChange}
             options={detailOptions}
             placeholder={detailPlaceholder}
+            error={detailError}
           />
         </div>
       )}

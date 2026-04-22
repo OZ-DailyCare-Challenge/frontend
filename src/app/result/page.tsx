@@ -19,6 +19,8 @@ import {
 import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
+import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 type Mission = {
   title?: string;
@@ -363,11 +365,16 @@ export default function ResultPage() {
 
           if (storedResult && !cancelled) {
             setResult(normalizeFromAnalysisResult(storedResult));
+            markHealthFlowComplete();
+            useAccessStore.getState().markAnalysisComplete();
           } else {
             const history = await getAnalysisHistory();
 
             if (!cancelled && history?.items?.length) {
-              setResult(normalizeFromHistoryItem(history.items[0]));
+              const latest = normalizeFromHistoryItem(history.items[0]);
+              setResult(latest);
+              markHealthFlowComplete();
+              useAccessStore.getState().markAnalysisComplete();
             } else if (!cancelled) {
               setResult(emptyResult());
             }
@@ -483,6 +490,18 @@ export default function ResultPage() {
   const handleChallengeClick = () => {
     if (isGuest) {
       handleRequireLogin();
+      return;
+    }
+
+    router.push("/challenge");
+  };
+
+  const handleChallengeMove = () => {
+    const isLoggedIn = Boolean(storage.getAccessToken());
+
+    if (!isLoggedIn) {
+      storage.setPostLoginRedirectPath("/challenge");
+      router.push("/login");
       return;
     }
 
