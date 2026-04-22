@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   requestGuestHealthAnalysis,
@@ -39,6 +39,27 @@ type FormState = {
 
 type FieldErrors = Partial<Record<keyof FormState, string>>;
 type FieldTouched = Partial<Record<keyof FormState, boolean>>;
+
+type UserProfileResponse = {
+  nickname?: string;
+  gender?: string;
+  birth_year?: number | string;
+  birthYear?: number | string;
+  profile_image?: string;
+};
+
+type HealthRecordResponse = {
+  record_id?: number;
+  systolic_bp?: number;
+  diastolic_bp?: number;
+  total_cholesterol?: number;
+  glucose?: number;
+  height?: number;
+  weight?: number;
+  smoke_yn?: boolean;
+  alcohol_yn?: boolean;
+  exercise_yn?: boolean;
+};
 
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
 
@@ -92,15 +113,136 @@ function isInRange(value: string, min: number, max: number) {
   return parsed >= min && parsed <= max;
 }
 
+function toDisplayGender(value?: string | null): Gender {
+  if (!value) return "";
+  if (value === "M" || value === "남" || value === "남성") return "남성";
+  if (value === "F" || value === "여" || value === "여성") return "여성";
+  return "";
+}
+
+function toDisplayYesNo(value?: boolean | null): YesNo {
+  if (value === true) return "예";
+  if (value === false) return "아니오";
+  return "";
+}
+
+function toDisplayNumber(value?: number | string | null) {
+  if (value == null) return "";
+  return String(value);
+}
+
+// 현재 프로젝트에 getProfile API helper가 없다고 가정하고 직접 조회
+async function fetchMyProfile(): Promise<UserProfileResponse | null> {
+  if (typeof window === "undefined") return null;
+
+  const token = storage.getAccessToken();
+  if (!token) return null;
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/users/profile`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    return json?.data ?? json ?? null;
+  } catch (error) {
+    console.warn("프로필 조회 실패:", error);
+    return null;
+  }
+}
+
 export default function InputPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
+  const [prefilling, setPrefilling] = useState(true);
   const [touched, setTouched] = useState<FieldTouched>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  const [hasExistingProfile, setHasExistingProfile] = useState(false);
+  const [latestRecordId, setLatestRecordId] = useState<number | null>(null);
+
   const progress = ((step + 1) / totalSteps) * 100;
+
+  // 로그인 사용자인 경우 기존 프로필 + 최근 건강기록 자동 반영
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const token = storage.getAccessToken();
+
+      if (!token) {
+        if (!cancelled) setPrefilling(false);
+        return;
+      }
+
+      try {
+        const [profile, records] = await Promise.all([
+          fetchMyProfile(),
+          getHealthRecords(),
+        ]);
+
+        if (cancelled) return;
+
+        const latestRecord =
+          Array.isArray(records) && records.length > 0
+            ? (records[0] as HealthRecordResponse)
+            : null;
+
+        setForm((prev) => ({
+          ...prev,
+          nickname: profile?.nickname ?? "",
+          gender: toDisplayGender(profile?.gender),
+          birthYear: toDisplayNumber(
+            profile?.birth_year ?? profile?.birthYear ?? ""
+          ),
+
+          height: toDisplayNumber(latestRecord?.height),
+          weight: toDisplayNumber(latestRecord?.weight),
+          systolic: toDisplayNumber(latestRecord?.systolic_bp),
+          diastolic: toDisplayNumber(latestRecord?.diastolic_bp),
+          fastingGlucose: toDisplayNumber(latestRecord?.glucose),
+          totalCholesterol: toDisplayNumber(latestRecord?.total_cholesterol),
+
+          smoking: toDisplayYesNo(latestRecord?.smoke_yn),
+          smokingDetail: "",
+          drinking: toDisplayYesNo(latestRecord?.alcohol_yn),
+          drinkingDetail: "",
+          exercise: toDisplayYesNo(latestRecord?.exercise_yn),
+          exerciseDetail: "",
+        }));
+
+        const profileExists = Boolean(
+          profile?.nickname ||
+            profile?.gender ||
+            profile?.birth_year ||
+            profile?.birthYear
+        );
+
+        setHasExistingProfile(profileExists);
+        setLatestRecordId(latestRecord?.record_id ?? null);
+      } catch (error) {
+        console.warn("input 초기값 불러오기 실패:", error);
+      } finally {
+        if (!cancelled) setPrefilling(false);
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const guideMessage = useMemo(() => {
     if (step === 0) {
@@ -418,6 +560,7 @@ export default function InputPage() {
       sessionStorage.removeItem("health-analysis-task");
       sessionStorage.removeItem("health-analysis-result");
 
+      // 비회원: guest 분석 흐름
       if (!token) {
         sessionStorage.setItem(
           GUEST_MIGRATION_KEY,
@@ -454,45 +597,25 @@ export default function InputPage() {
         return;
       }
 
-      try {
+      // 회원: 프로필이 있으면 update, 없으면 initial 생성
+      if (hasExistingProfile) {
+        await updateUserProfile({
+          nickname: form.nickname.trim(),
+          birth_year: birthYear,
+        });
+      } else {
         await createInitialProfile({
           nickname: form.nickname.trim(),
           gender: genderForUser,
           birth_year: birthYear,
         });
-      } catch (error: any) {
-        const status = error?.response?.status ?? error?.status ?? null;
-
-        if (status === 409) {
-          try {
-            await updateUserProfile({
-              nickname: form.nickname.trim(),
-              birth_year: birthYear,
-            });
-          } catch (patchError) {
-            console.warn("프로필 업데이트 실패 (분석은 계속 진행):", patchError);
-          }
-        } else {
-          throw error;
-        }
       }
 
-      const recordsBeforeSave = await getHealthRecords();
-      const latestRecordBeforeSave =
-        Array.isArray(recordsBeforeSave) && recordsBeforeSave.length > 0
-          ? recordsBeforeSave[0]
-          : null;
+      // 회원: 건강기록이 있으면 patch, 없으면 create
+      let savedRecordId: number | null = latestRecordId;
 
-      let savedRecordId: number | null = null;
-
-      if (latestRecordBeforeSave?.record_id) {
-        try {
-          await patchHealthRecord(latestRecordBeforeSave.record_id, healthPayload);
-        } catch (error) {
-          console.warn("기존 건강기록 patch 실패, 기존 record_id로 계속 진행:", error);
-        }
-
-        savedRecordId = latestRecordBeforeSave.record_id;
+      if (latestRecordId) {
+        await patchHealthRecord(latestRecordId, healthPayload);
       } else {
         const createdRecord = await createHealthRecord(healthPayload);
         savedRecordId = extractRecordId(createdRecord);
@@ -501,10 +624,10 @@ export default function InputPage() {
           const recordsAfterCreate = await getHealthRecords();
           const newestRecord =
             Array.isArray(recordsAfterCreate) && recordsAfterCreate.length > 0
-              ? recordsAfterCreate[0]
+              ? (recordsAfterCreate[0] as HealthRecordResponse)
               : null;
 
-          savedRecordId = extractRecordId(newestRecord);
+          savedRecordId = newestRecord?.record_id ?? null;
         }
       }
 
@@ -623,7 +746,15 @@ export default function InputPage() {
 
             <div className="w-full">
               <section className="mx-auto w-full max-w-3xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
-                {step === 0 && (
+                {prefilling ? (
+                  <div className="flex min-h-[360px] items-center justify-center">
+                    <p className="text-sm text-[#163126]/55">
+                      기존 입력 정보를 불러오는 중이에요...
+                    </p>
+                  </div>
+                ) : null}
+
+                {!prefilling && step === 0 && (
                   <div>
                     <StepHeader
                       eyebrow="basic info"
@@ -698,7 +829,7 @@ export default function InputPage() {
                   </div>
                 )}
 
-                {step === 1 && (
+                {!prefilling && step === 1 && (
                   <div>
                     <StepHeader
                       eyebrow="health metrics"
@@ -764,7 +895,7 @@ export default function InputPage() {
                   </div>
                 )}
 
-                {step === 2 && (
+                {!prefilling && step === 2 && (
                   <div>
                     <StepHeader
                       eyebrow="lifestyle"
@@ -851,7 +982,7 @@ export default function InputPage() {
                   </div>
                 )}
 
-                {step === 3 && (
+                {!prefilling && step === 3 && (
                   <div>
                     <StepHeader
                       eyebrow="review"
@@ -909,7 +1040,7 @@ export default function InputPage() {
               <div className="mx-auto mt-8 flex w-full max-w-3xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   onClick={handlePrev}
-                  disabled={step === 0}
+                  disabled={step === 0 || prefilling}
                   className="w-full rounded-full border border-[#163126]/10 bg-white/72 px-6 py-3 text-sm font-semibold text-[#163126] transition disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto"
                 >
                   이전
@@ -918,7 +1049,7 @@ export default function InputPage() {
                 {step < totalSteps - 1 ? (
                   <button
                     onClick={handleNext}
-                    disabled={!canGoNext}
+                    disabled={!canGoNext || prefilling}
                     className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
                   >
                     다음
@@ -926,7 +1057,7 @@ export default function InputPage() {
                 ) : (
                   <button
                     onClick={handleAnalyze}
-                    disabled={!isAllValid || submitting}
+                    disabled={!isAllValid || submitting || prefilling}
                     className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
                   >
                     {submitting ? "분석 요청 중..." : "건강 분석하기"}
