@@ -174,7 +174,7 @@ export default function HomePage() {
     setSelectedBubble(null);
 
     window.setTimeout(() => {
-      router.push("/input");
+      router.push("/health/start?mode=first");
     }, 1100);
   };
 
@@ -282,14 +282,14 @@ export default function HomePage() {
               initial={false}
               animate={{
                 opacity: introDone ? (launching ? 0 : 1) : 0,
-                y: introDone ? (launching ? -8 : 42) : 64,
-                x: introDone ? (launching ? 12 : 42) : 76,
+                y: introDone ? (launching ? -8 : 28) : 56,
+                x: introDone ? (launching ? 12 : 24) : 60,
                 scale: introDone ? 1 : 0.97,
               }}
               transition={{ duration: 0.58, delay: 0.24, ease: "easeOut" }}
-              className="relative z-20 flex items-end justify-center lg:justify-end pointer-events-none"
+              className="relative z-20 flex items-center justify-center lg:justify-end"
             >
-              <div className="relative flex w-full max-w-[820px] items-end justify-center lg:justify-end">
+              <div className="relative flex w-full max-w-[820px] items-center justify-center lg:justify-end">
                 <motion.div
                   animate={
                     launching
@@ -348,39 +348,38 @@ export default function HomePage() {
                     </div>
                   )}
 
+                  {/* 데스크톱/태블릿: 캐릭터 가까이에 붙는 말풍선 */}
                   <motion.div
-                    initial={{ y: 10, opacity: 0 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{
-                      y: introDone ? 0 : 10,
                       opacity: introDone ? 1 : 0,
+                      y: introDone ? 0 : 10,
                     }}
-                    transition={{ duration: 0.45, delay: 0.42, ease: "easeOut" }}
-                    className="absolute left-[-2%] top-[-18%] z-30"
+                    transition={{ duration: 0.45, delay: 0.4, ease: "easeOut" }}
+                    className="absolute left-1/2 top-[-80px] z-30 hidden -translate-x-1/2 sm:block lg:top-[-100px]"
                   >
-                    <div className="relative w-[210px] rounded-[26px] border border-white/35 bg-white/18 px-5 py-4 shadow-[0_16px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl md:w-[236px]">
-                      <div className="absolute inset-0 rounded-[26px] bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08))]" />
+                    <div className="relative w-[220px] rounded-2xl border border-white/30 bg-white/20 px-4 py-3 text-[13px] leading-relaxed text-white backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
 
-                      <div className="relative z-10">
-                        <p className="text-sm font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
-                          반가워요 🐹
-                        </p>
-                        <p className="mt-1 text-sm text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.12)]">
-                          저는 Buddy예요
-                        </p>
-                        <p className="mt-3 text-[18px] font-bold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
-                          떠다니는 큰 비눗방울을
-                          <br />
-                          눌러볼까요?
-                        </p>
-                      </div>
+                      <p className="text-[11px] font-semibold text-white/70">
+                        반가워요 🐹
+                      </p>
 
-                      <div className="absolute bottom-[-8px] left-[60%] h-4 w-4 -translate-x-1/2 rotate-45 border-r border-b border-white/35 bg-white/18 backdrop-blur-xl" />
+                      <p className="mt-1 font-medium">
+                        저는 Buddy예요
+                      </p>
+
+                      <p className="mt-1 text-white/90">
+                        떠다니는 큰 비눗방울을<br />눌러볼까요?
+                      </p>
+
+                      {/* 말풍선 꼬리 */}
+                      <div className="absolute left-1/2 bottom-[-6px] h-4 w-4 -translate-x-1/2 rotate-45 border-b border-r border-white/30 bg-white/20 backdrop-blur-xl" />
                     </div>
                   </motion.div>
 
                   <div className="relative w-[340px] sm:w-[410px] lg:w-[500px]">
                     <Image
-                      src="/images/hamster-bubble.png"
+                      src="/images/buddy-bubble.png"
                       alt="MyHealthBuddy 햄스터 캐릭터"
                       width={500}
                       height={500}
@@ -389,6 +388,35 @@ export default function HomePage() {
                       className="h-auto w-full object-contain drop-shadow-[0_22px_46px_rgba(0,0,0,0.10)]"
                     />
                   </div>
+
+                  {/* 모바일: 캐릭터 아래에 별도 배치 */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{
+                      opacity: introDone ? 1 : 0,
+                      y: introDone ? 0 : 10,
+                    }}
+                    transition={{ duration: 0.45, delay: 0.45, ease: "easeOut" }}
+                    className="mx-auto mt-3 block max-w-[240px] sm:hidden"
+                  >
+                    <div className="relative rounded-[24px] border border-white/35 bg-white/18 px-4 py-4 shadow-[0_16px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
+                      <div className="absolute inset-0 rounded-[24px] bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08))]" />
+
+                      <div className="relative z-10 text-center">
+                        <p className="text-sm font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
+                          반가워요 🐹
+                        </p>
+                        <p className="mt-1 text-sm text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.12)]">
+                          저는 Buddy예요
+                        </p>
+                        <p className="mt-3 text-base font-bold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.14)]">
+                          떠다니는 큰 비눗방울을
+                          <br />
+                          눌러볼까요?
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
                 </motion.div>
               </div>
             </motion.div>
