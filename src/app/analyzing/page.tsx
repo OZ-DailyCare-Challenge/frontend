@@ -130,7 +130,7 @@ export default function AnalyzingPage() {
         markHealthFlowComplete();
       } else {
         guestAnalysisStorage.setResult(result);
-        guestAnalysisStorage.clearTaskId();
+        // task_id는 유지 — 로그인 후 migrate-guest API로 DB 저장에 사용
       }
 
       finishedRef.current = true;
