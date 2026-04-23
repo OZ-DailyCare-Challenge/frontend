@@ -79,10 +79,16 @@ function AuthCallbackInner() {
             if (!finalResult || finalResult.status !== "success") {
               // fallback: 재분석 요청
               const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
-              const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
-              if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
-              sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
-              finalResult = await getAnalysisResult(taskId);
+
+              // 캐시 히트 시 즉시 결과 반환 (task_id 없음)
+              if (analysisResponse?.status === "success") {
+                finalResult = analysisResponse;
+              } else {
+                const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
+                if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
+                sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
+                finalResult = await getAnalysisResult(taskId);
+              }
             }
 
             analysisStorage.setResult(finalResult);

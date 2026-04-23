@@ -15,10 +15,12 @@ import {
 import { storage } from "@/src/utils/storage";
 import {
   getChallengesWithFallback,
+  getRecommendations,
   joinChallengeWithFallback,
   abandonChallengeWithFallback,
   logChallengeWithFallback,
   type Challenge as ApiChallenge,
+  type RecommendItem,
   type UserChallengeResponse,
 } from "@/src/api/challenge";
 import {
@@ -242,6 +244,7 @@ export default function ChallengeScreen() {
   const [pulseChallengeId, setPulseChallengeId] = useState<
     number | string | null
   >(null);
+  const [ragRecommendations, setRagRecommendations] = useState<RecommendItem[]>([]);
   const [aiMissions, setAiMissions] = useState<Mission[]>([]);
   const [photoSubmitting, setPhotoSubmitting] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -274,19 +277,26 @@ export default function ChallengeScreen() {
       try {
         setLoading(true);
 
-        const response = await getChallengesWithFallback();
-        setUsingFallbackChallenges(response.isFallback);
+        const [challengeResponse, recommendResponse] = await Promise.allSettled([
+          getChallengesWithFallback(),
+          getRecommendations(),
+        ]);
 
-        const activeMap = getStoredActiveChallengeMap();
+        if (challengeResponse.status === "fulfilled") {
+          setUsingFallbackChallenges(challengeResponse.value.isFallback);
+          const activeMap = getStoredActiveChallengeMap();
+          const mapped = (challengeResponse.value.challenges ?? []).map((challenge) =>
+            mapApiChallengeToUi(challenge, activeMap)
+          );
+          setBaseChallenges(mapped);
+        } else {
+          console.error("챌린지 목록 조회 실패:", challengeResponse.reason);
+          setBaseChallenges([]);
+        }
 
-        const mapped = (response.challenges ?? []).map((challenge) =>
-          mapApiChallengeToUi(challenge, activeMap)
-        );
-
-        setBaseChallenges(mapped);
-      } catch (error) {
-        console.error("챌린지 목록 조회 실패:", error);
-        setBaseChallenges([]);
+        if (recommendResponse.status === "fulfilled") {
+          setRagRecommendations(recommendResponse.value.recommendations ?? []);
+        }
       } finally {
         setLoading(false);
       }
@@ -296,6 +306,9 @@ export default function ChallengeScreen() {
   }, []);
 
   const mergedChallenges = useMemo(() => {
+    if (ragRecommendations.length > 0) {
+      return applyRagRecommendations(baseChallenges, ragRecommendations);
+    }
     return mergeAiRecommendations(baseChallenges, aiMissions);
   }, [baseChallenges, aiMissions]);
 
@@ -825,6 +838,17 @@ export default function ChallengeScreen() {
                     <p className="mt-4 text-sm leading-7 text-[#163126]/68 md:text-base">
                       {selectedChallenge.description}
                     </p>
+
+                    {selectedChallenge.aiRecommended && selectedChallenge.aiReason && (
+                      <div className="mt-4 rounded-[18px] bg-[#fff8df] px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6c00]">
+                          AI 추천 이유
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[#5c4a00]">
+                          {selectedChallenge.aiReason}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <InfoCard label="기대효과" value={selectedChallenge.effect} />
@@ -1440,6 +1464,33 @@ function mergeAiRecommendations(
     (item) => !usedBaseIds.has(item.id)
   );
   return [...merged, ...remainingBase];
+}
+
+function applyRagRecommendations(
+  baseChallenges: ChallengeItem[],
+  recommendations: RecommendItem[]
+): ChallengeItem[] {
+  if (!recommendations.length) return baseChallenges;
+
+  const recommendMap = new Map(
+    recommendations.map((r) => [r.challenge_id, r.reason])
+  );
+
+  const recommended = baseChallenges
+    .filter((c) => typeof c.challengeId === "number" && recommendMap.has(c.challengeId))
+    .map((c) => ({
+      ...c,
+      aiRecommended: true,
+      recommended: true,
+      aiReason: recommendMap.get(c.challengeId as number) ?? "",
+      source: "base" as const,
+    }));
+
+  const rest = baseChallenges.filter(
+    (c) => typeof c.challengeId !== "number" || !recommendMap.has(c.challengeId)
+  );
+
+  return [...recommended, ...rest];
 }
 
 function getMergedChallengeCounts(challenges: ChallengeItem[]) {

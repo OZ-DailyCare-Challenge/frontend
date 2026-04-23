@@ -52,6 +52,16 @@ export type ChallengesWithFallbackResponse = {
   isFallback: boolean;
 };
 
+export type RecommendItem = {
+  challenge_id: number;
+  title: string;
+  reason: string;
+};
+
+export type RecommendResponse = {
+  recommendations: RecommendItem[];
+};
+
 function getApiBaseUrl() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -106,6 +116,26 @@ function mapInitialChallengeToApiChallenge(): Challenge[] {
     duration_days: item.durationDays,
     required_success_days: item.completionWindow,
   }));
+}
+
+/**
+ * AI 맞춤 챌린지 추천 (RAG)
+ * GET /api/v1/challenges/recommend
+ */
+export async function getRecommendations(): Promise<RecommendResponse> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/challenges/recommend`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  if (!response.ok) {
+    await parseErrorResponse(response, "챌린지 추천 조회 실패");
+  }
+
+  return response.json();
 }
 
 /**
