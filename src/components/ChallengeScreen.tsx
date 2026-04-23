@@ -364,8 +364,7 @@ export default function ChallengeScreen() {
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const isSubmittedToday =
-    !!selectedChallenge &&
-    selectedChallenge.lastSubmittedDate === todayKey;
+    !!selectedChallenge && selectedChallenge.lastSubmittedDate === todayKey;
 
   const detailProgressPercent = selectedChallenge
     ? (selectedChallenge.logs.filter((v) => v !== null).length /
@@ -636,12 +635,13 @@ export default function ChallengeScreen() {
 
       console.log("exercise verify result:", verifyResult);
 
+      const verifyResultRecord = verifyResult as Record<string, unknown>;
+
       const resolvedCvResultId =
-        typeof (verifyResult as { cv_result_id?: number })?.cv_result_id ===
-        "number"
-          ? (verifyResult as { cv_result_id: number }).cv_result_id
-          : typeof (verifyResult as { result_id?: number })?.result_id === "number"
-          ? (verifyResult as { result_id: number }).result_id
+        typeof verifyResultRecord.cv_result_id === "number"
+          ? verifyResultRecord.cv_result_id
+          : typeof verifyResultRecord.result_id === "number"
+          ? verifyResultRecord.result_id
           : undefined;
 
       await submitChallengeLog(
@@ -1286,8 +1286,7 @@ function ExerciseVerifyModal({
             <br />
             • 칼로리 또는 걸음 수
             <br />
-            <br />
-            ※ 2개 이상 확인되면 인증 성공
+            <br />※ 2개 이상 확인되면 인증 성공
             <br />※ 흐리거나 잘린 이미지는 인증이 실패할 수 있어요
           </div>
         </div>
