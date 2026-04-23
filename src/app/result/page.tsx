@@ -16,6 +16,7 @@ import {
   type AnalysisHistoryItem,
   type AnalysisResultResponse,
 } from "@/src/api/analysis";
+import { getDashboard } from "@/src/api/user";
 import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
@@ -45,12 +46,13 @@ type NormalizedResult = {
   encouragement: string;
   missions: ChallengeCardItem[];
   createdAt: string;
-  source: "session" | "history" | "empty";
+  source: "session" | "history" | "guest" | "empty";
 };
 
-type StoredUser = {
-  age?: number;
+type DashboardProfile = {
+  age?: number | string;
   birth_year?: number;
+  birthYear?: number;
 };
 
 type GuestProfile = {
@@ -127,7 +129,8 @@ function normalizeMissionItem(mission: unknown): ChallengeCardItem | null {
 }
 
 function normalizeFromAnalysisResult(
-  result: AnalysisResultResponse
+  result: AnalysisResultResponse,
+  source: "session" | "guest" = "session"
 ): NormalizedResult {
   const rawMissions = result?.data?.ml1_comment?.missions ?? [];
 
@@ -157,7 +160,7 @@ function normalizeFromAnalysisResult(
           .filter(Boolean) as ChallengeCardItem[])
       : [],
     createdAt: "",
-    source: "session",
+    source,
   };
 }
 
@@ -360,33 +363,53 @@ export default function ResultPage() {
         const isLoggedIn = Boolean(storage.getAccessToken());
 
         if (isLoggedIn) {
-          const storedResult =
-            analysisStorage.getResult<AnalysisResultResponse>();
+          const [history, dashboard] = await Promise.all([
+            getAnalysisHistory().catch((error) => {
+              console.warn("분석 히스토리 조회 실패:", error);
+              return null;
+            }),
+            getDashboard().catch((error) => {
+              console.warn("대시보드 조회 실패:", error);
+              return null;
+            }),
+          ]);
 
-          if (storedResult && !cancelled) {
-            setResult(normalizeFromAnalysisResult(storedResult));
+          if (cancelled) return;
+
+          if (history?.items?.length) {
+            const latest = normalizeFromHistoryItem(history.items[0]);
+            setResult(latest);
             markHealthFlowComplete();
             useAccessStore.getState().markAnalysisComplete();
           } else {
-            const history = await getAnalysisHistory();
+            const storedResult =
+              analysisStorage.getResult<AnalysisResultResponse>();
 
-            if (!cancelled && history?.items?.length) {
-              const latest = normalizeFromHistoryItem(history.items[0]);
-              setResult(latest);
+            if (storedResult) {
+              setResult(normalizeFromAnalysisResult(storedResult, "session"));
               markHealthFlowComplete();
               useAccessStore.getState().markAnalysisComplete();
-            } else if (!cancelled) {
+            } else {
               setResult(emptyResult());
             }
           }
 
-          const user = (storage.getUser?.() ?? null) as StoredUser | null;
+          const profile = (dashboard ?? null) as DashboardProfile | null;
 
-          if (typeof user?.age === "number") {
-            setActualAgeText(`${user.age}세`);
-          } else if (typeof user?.birth_year === "number") {
+          if (typeof profile?.age === "number") {
+            setActualAgeText(`${profile.age}세`);
+          } else if (
+            typeof profile?.age === "string" &&
+            profile.age.trim() &&
+            !Number.isNaN(Number(profile.age))
+          ) {
+            setActualAgeText(`${Number(profile.age)}세`);
+          } else if (typeof profile?.birth_year === "number") {
             const currentYear = new Date().getFullYear();
-            setActualAgeText(`${currentYear - user.birth_year}세`);
+            setActualAgeText(`${currentYear - profile.birth_year}세`);
+          } else if (typeof profile?.birthYear === "number") {
+            const currentYear = new Date().getFullYear();
+            setActualAgeText(`${currentYear - profile.birthYear}세`);
           } else {
             setActualAgeText("-");
           }
@@ -398,7 +421,7 @@ export default function ResultPage() {
           guestAnalysisStorage.getResult<AnalysisResultResponse>();
 
         if (!cancelled && guestResult) {
-          setResult(normalizeFromAnalysisResult(guestResult));
+          setResult(normalizeFromAnalysisResult(guestResult, "guest"));
         } else if (!cancelled) {
           setResult(emptyResult());
         }
@@ -496,18 +519,6 @@ export default function ResultPage() {
     router.push("/challenge");
   };
 
-  const handleChallengeMove = () => {
-    const isLoggedIn = Boolean(storage.getAccessToken());
-
-    if (!isLoggedIn) {
-      storage.setPostLoginRedirectPath("/challenge");
-      router.push("/login");
-      return;
-    }
-
-    router.push("/challenge");
-  };
-
   if (!mounted) {
     return (
       <AppShell isGuest={isGuest} onRequireLogin={handleRequireLogin}>
@@ -539,8 +550,8 @@ export default function ResultPage() {
               심혈관 건강 분석 결과
             </h1>
             <p className="mt-5 max-w-2xl text-sm leading-7 text-[#163126]/65 md:text-base">
-              입력한 건강검진 수치와 생활습관 정보를 바탕으로
-              심혈관 건강 상태를 분석했어요.
+              입력한 건강검진 수치와 생활습관 정보를 바탕으로 심혈관 건강 상태를
+              분석했어요.
             </p>
           </motion.div>
 
@@ -684,15 +695,15 @@ export default function ResultPage() {
                   <p className="mt-2 text-lg font-bold text-[#163126]">심혈관 나이</p>
 
                   <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.48, duration: 0.35 }}
-                  className="mt-6"
-                >
-                  <span className="inline-flex rounded-full bg-[#dff3e7] px-3 py-1 text-sm font-semibold text-[#2E7D5B]">
-                    {loading ? "비교 계산 중..." : ageCompareText}
-                  </span>
-                </motion.div>
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.48, duration: 0.35 }}
+                    className="mt-6"
+                  >
+                    <span className="inline-flex rounded-full bg-[#dff3e7] px-3 py-1 text-sm font-semibold text-[#2E7D5B]">
+                      {loading ? "비교 계산 중..." : ageCompareText}
+                    </span>
+                  </motion.div>
                 </div>
               </div>
 

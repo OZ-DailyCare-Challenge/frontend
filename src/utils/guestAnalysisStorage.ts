@@ -38,96 +38,96 @@ export type GuestPendingFlow = {
   guestAnalysisPayload: GuestStoredAnalysisPayload;
 };
 
+function safeLocalSet(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, value);
+}
+
+function safeLocalGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(key);
+}
+
+function safeLocalRemove(key: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(key);
+}
+
 export const guestAnalysisStorage = {
   setTaskId(taskId: string) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(TASK_ID_KEY, taskId);
+    safeLocalSet(TASK_ID_KEY, taskId);
   },
 
   getTaskId(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(TASK_ID_KEY);
+    return safeLocalGet(TASK_ID_KEY);
   },
 
   clearTaskId() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(TASK_ID_KEY);
+    safeLocalRemove(TASK_ID_KEY);
   },
 
   setResult(result: unknown) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(RESULT_KEY, JSON.stringify(result));
+    safeLocalSet(RESULT_KEY, JSON.stringify(result));
   },
 
   getResult<T = unknown>(): T | null {
-    if (typeof window === "undefined") return null;
-
-    const raw = localStorage.getItem(RESULT_KEY);
+    const raw = safeLocalGet(RESULT_KEY);
     if (!raw) return null;
 
     try {
       return JSON.parse(raw) as T;
-    } catch {
+    } catch (error) {
+      console.error("guest_analysis_result 파싱 실패:", error);
       return null;
     }
   },
 
   clearResult() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(RESULT_KEY);
+    safeLocalRemove(RESULT_KEY);
   },
 
   setPendingFlow(flow: GuestPendingFlow) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(PENDING_FLOW_KEY, JSON.stringify(flow));
+    safeLocalSet(PENDING_FLOW_KEY, JSON.stringify(flow));
   },
 
   getPendingFlow<T = GuestPendingFlow>(): T | null {
-    if (typeof window === "undefined") return null;
-
-    const raw = localStorage.getItem(PENDING_FLOW_KEY);
+    const raw = safeLocalGet(PENDING_FLOW_KEY);
     if (!raw) return null;
 
     try {
       return JSON.parse(raw) as T;
-    } catch {
+    } catch (error) {
+      console.error("guest_analysis_pending_flow 파싱 실패:", error);
       return null;
     }
   },
 
   clearPendingFlow() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(PENDING_FLOW_KEY);
+    safeLocalRemove(PENDING_FLOW_KEY);
   },
 
   setPostLoginRedirect(path: string) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(POST_LOGIN_REDIRECT_KEY, path);
+    safeLocalSet(POST_LOGIN_REDIRECT_KEY, path);
   },
 
   getPostLoginRedirect(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+    return safeLocalGet(POST_LOGIN_REDIRECT_KEY);
   },
 
   clearPostLoginRedirect() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+    safeLocalRemove(POST_LOGIN_REDIRECT_KEY);
   },
 
   setMigrationNeeded(value: boolean) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(MIGRATION_NEEDED_KEY, value ? "true" : "false");
+    safeLocalSet(MIGRATION_NEEDED_KEY, value ? "true" : "false");
   },
 
   isMigrationNeeded(): boolean {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(MIGRATION_NEEDED_KEY) === "true";
+    return safeLocalGet(MIGRATION_NEEDED_KEY) === "true";
   },
 
   clearMigrationNeeded() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(MIGRATION_NEEDED_KEY);
+    safeLocalRemove(MIGRATION_NEEDED_KEY);
   },
 
   clearGuestFlowMeta() {

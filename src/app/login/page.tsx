@@ -16,6 +16,7 @@ import { requestUserHealthAnalysis } from "@/src/api/analysis";
 import {
   createInitialProfile,
   updateUserProfile,
+  getDashboard,
   // cancelWithdraw, // 백엔드 API 생기면 주석 해제
 } from "@/src/api/user";
 import { storage } from "@/src/utils/storage";
@@ -56,6 +57,17 @@ type LoginResponseWithWithdraw = {
   withdrawal_deadline?: string;
 };
 
+type HealthRecordItem = {
+  record_id?: number;
+  id?: number;
+};
+
+type DashboardProfile = {
+  gender?: string;
+  birth_year?: number | string;
+  birthYear?: number | string;
+};
+
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
 const GUEST_MIGRATION_DONE_KEY = "guest-health-migration-done";
 
@@ -67,7 +79,24 @@ function extractRecordId(res: any): number | null {
     res?.data?.id ??
     null;
 
-  return typeof value === "number" ? value : null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && !Number.isNaN(Number(value))) {
+    return Number(value);
+  }
+
+  return null;
+}
+
+function extractHealthRecords(raw: unknown): HealthRecordItem[] {
+  const data = raw as
+    | HealthRecordItem[]
+    | { records?: HealthRecordItem[]; data?: { records?: HealthRecordItem[] } }
+    | null;
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.records)) return data.records;
+  if (Array.isArray(data?.data?.records)) return data.data.records;
+  return [];
 }
 
 function parseGuestMigrationPayload(): GuestMigrationPayload | null {
@@ -96,9 +125,15 @@ function clearGuestMigrationState() {
   sessionStorage.removeItem(GUEST_MIGRATION_KEY);
   sessionStorage.removeItem(GUEST_MIGRATION_DONE_KEY);
   sessionStorage.removeItem("guest-profile");
-  guestAnalysisStorage.clearTaskId();
-  guestAnalysisStorage.clearResult();
+
+  analysisStorage.clearAll();
+  guestAnalysisStorage.clearAll();
   storage.clearGuestFlow();
+  storage.clearPostLoginRedirectPath();
+
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("guest-health-migration-payload");
+  }
 }
 
 function formatDeadline(deadline?: string) {
@@ -114,6 +149,16 @@ function formatDeadline(deadline?: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function extractStatusFromError(error: any): number | null {
+  const matchedStatus = error?.message?.match(/:\s(\d{3})\s/);
+
+  return (
+    error?.response?.status ??
+    error?.status ??
+    (matchedStatus ? Number(matchedStatus[1]) : null)
+  );
 }
 
 export default function LoginPage() {
@@ -135,8 +180,7 @@ export default function LoginPage() {
       storage.removeRefreshToken();
       storage.clearAccessSnapshot();
       clearHealthFlowComplete();
-      sessionStorage.removeItem("health-analysis-task");
-      sessionStorage.removeItem("health-analysis-result");
+      analysisStorage.clearAll();
       sessionStorage.removeItem("health-ai-missions");
     }
   }, []);
@@ -155,50 +199,74 @@ export default function LoginPage() {
     sessionStorage.setItem(GUEST_MIGRATION_DONE_KEY, "true");
 
     try {
-      try {
-        await createInitialProfile({
-          nickname: guestPayload.nickname,
-          gender: guestPayload.gender,
-          birth_year: guestPayload.birthYear,
-        });
-      } catch (error: any) {
-        const status = error?.response?.status ?? error?.status ?? null;
+      const dashboard = (await getDashboard().catch(() => null)) as
+        | DashboardProfile
+        | null;
 
-        if (status === 409) {
-          await updateUserProfile({
+      const hasInitialProfile =
+        dashboard?.gender !== undefined &&
+        dashboard?.gender !== null &&
+        dashboard?.gender !== "";
+
+      if (!hasInitialProfile) {
+        try {
+          await createInitialProfile({
             nickname: guestPayload.nickname,
+            gender: guestPayload.gender,
             birth_year: guestPayload.birthYear,
           });
-        } else {
-          throw error;
+        } catch (error: any) {
+          const status = extractStatusFromError(error);
+
+          if (status === 409) {
+            await updateUserProfile({
+              nickname: guestPayload.nickname,
+              birth_year: guestPayload.birthYear,
+            });
+          } else {
+            throw error;
+          }
         }
+      } else {
+        await updateUserProfile({
+          nickname: guestPayload.nickname,
+          birth_year: guestPayload.birthYear,
+        });
       }
 
-      const existingRecords = await getHealthRecords();
-      const latestRecord =
-        Array.isArray(existingRecords) && existingRecords.length > 0
-          ? existingRecords[0]
-          : null;
+      const existingRecordsRaw = await getHealthRecords();
+      const existingRecords = extractHealthRecords(existingRecordsRaw);
+      const latestRecord = existingRecords.length > 0 ? existingRecords[0] : null;
 
       let recordId: number | null = null;
 
-      if (latestRecord?.record_id) {
-        try {
-          await patchHealthRecord(
-            latestRecord.record_id,
-            guestPayload.healthPayload
-          );
-        } catch (error) {
-          console.warn(
-            "기존 건강기록 patch 실패, 기존 record_id로 계속 진행:",
-            error
-          );
-        }
+      if (latestRecord?.record_id || latestRecord?.id) {
+        const latestRecordId = latestRecord.record_id ?? latestRecord.id ?? null;
 
-        recordId = latestRecord.record_id;
+        if (latestRecordId) {
+          try {
+            await patchHealthRecord(latestRecordId, guestPayload.healthPayload);
+          } catch (error) {
+            console.warn(
+              "기존 건강기록 patch 실패, 기존 record_id로 계속 진행:",
+              error
+            );
+          }
+
+          recordId = latestRecordId;
+        }
       } else {
         const created = await createHealthRecord(guestPayload.healthPayload);
         recordId = extractRecordId(created);
+      }
+
+      if (!recordId) {
+        const recordsAfterCreateRaw = await getHealthRecords();
+        const recordsAfterCreate = extractHealthRecords(recordsAfterCreateRaw);
+        const newestRecord =
+          recordsAfterCreate.length > 0 ? recordsAfterCreate[0] : null;
+
+        recordId = newestRecord?.record_id ?? newestRecord?.id ?? null;
       }
 
       if (!recordId) {
@@ -235,24 +303,27 @@ export default function LoginPage() {
 
   const finalizeLoginFlow = async (result: LoginResponseWithWithdraw) => {
     const previousUser = storage.getUser();
+    const nextUserEmail = result.user?.email ?? null;
+    const prevUserEmail = previousUser?.email ?? null;
+
     const isDifferentUser =
-      previousUser?.email && result.user?.email
-        ? previousUser.email !== result.user.email
-        : false;
+      Boolean(prevUserEmail) &&
+      Boolean(nextUserEmail) &&
+      prevUserEmail !== nextUserEmail;
+
+    analysisStorage.clearAll();
+    storage.clearAnalysisCache();
 
     if (isDifferentUser) {
       storage.clearHealthFlow();
       storage.clearGuestFlow();
       storage.clearAccessSnapshot();
       clearHealthFlowComplete();
-      sessionStorage.removeItem("health-analysis-task");
-      sessionStorage.removeItem("health-analysis-result");
       sessionStorage.removeItem("health-ai-missions");
       sessionStorage.removeItem(GUEST_MIGRATION_KEY);
       sessionStorage.removeItem(GUEST_MIGRATION_DONE_KEY);
       sessionStorage.removeItem("guest-profile");
-      guestAnalysisStorage.clearTaskId();
-      guestAnalysisStorage.clearResult();
+      guestAnalysisStorage.clearAll();
     }
 
     await useAccessStore.getState().applyLogin({
@@ -289,7 +360,6 @@ export default function LoginPage() {
   };
 
   /*
-  // 백엔드에 탈퇴 취소 API 생기면 이 함수 주석 해제
   const handleCancelWithdrawConfirm = async () => {
     if (!pendingLoginResult) return;
 
