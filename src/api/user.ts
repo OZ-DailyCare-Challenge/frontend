@@ -1,4 +1,6 @@
 import { storage } from "@/src/utils/storage";
+import { analysisStorage } from "@/src/utils/analysisStorage";
+import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 
 /* =========================
    타입 정의
@@ -30,16 +32,14 @@ export type UserProfileResponse = {
   gender?: string;
   age?: number | string;
   birth_year?: number;
+  birthYear?: number;
   height?: number;
   weight?: number;
   current_point?: number;
   character_stage?: string | number;
   created_at?: string;
-
-  // 백엔드에서 지원하면 로그인/유저 조회 응답에 같이 내려올 수 있음
   withdrawal_pending?: boolean;
   withdrawal_deadline?: string;
-
   [key: string]: unknown;
 };
 
@@ -54,7 +54,7 @@ function getApiBaseUrl(): string {
     throw new Error("NEXT_PUBLIC_API_BASE_URL이 설정되지 않았습니다.");
   }
 
-  return apiBaseUrl;
+  return apiBaseUrl.replace(/\/$/, "");
 }
 
 function getAuthHeaders(withJson = true): HeadersInit {
@@ -82,6 +82,18 @@ async function parseErrorResponse(
   throw new Error(`${defaultMessage}: ${response.status} ${errorText}`);
 }
 
+async function parseJsonOrThrow<T>(
+  response: Response,
+  defaultMessage: string
+): Promise<T> {
+  if (!response.ok) {
+    await parseErrorResponse(response, defaultMessage);
+  }
+
+  const json = await response.json().catch(() => null);
+  return (json?.data ?? json ?? null) as T;
+}
+
 /* =========================
    API
 ========================= */
@@ -93,13 +105,10 @@ export async function getDashboard(): Promise<UserProfileResponse> {
   const response = await fetch(`${getApiBaseUrl()}/api/v1/users/dashboard`, {
     method: "GET",
     headers: getAuthHeaders(),
+    cache: "no-store",
   });
 
-  if (!response.ok) {
-    await parseErrorResponse(response, "대시보드 조회 실패");
-  }
-
-  return response.json();
+  return parseJsonOrThrow<UserProfileResponse>(response, "대시보드 조회 실패");
 }
 
 /**
@@ -117,11 +126,7 @@ export async function createInitialProfile(
     }
   );
 
-  if (!response.ok) {
-    await parseErrorResponse(response, "초기 프로필 저장 실패");
-  }
-
-  return response.json();
+  return parseJsonOrThrow<UserProfileResponse>(response, "초기 프로필 저장 실패");
 }
 
 /**
@@ -136,11 +141,7 @@ export async function updateUserProfile(
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    await parseErrorResponse(response, "프로필 수정 실패");
-  }
-
-  return response.json();
+  return parseJsonOrThrow<UserProfileResponse>(response, "프로필 수정 실패");
 }
 
 /**
@@ -161,7 +162,8 @@ export async function withdrawUser(
     await parseErrorResponse(response, "회원 탈퇴 실패");
   }
 
-  return response.json().catch(() => null);
+  const json = await response.json().catch(() => null);
+  return (json?.data ?? json ?? null) as { message?: string } | null;
 }
 
 /**
@@ -169,27 +171,19 @@ export async function withdrawUser(
  */
 export async function logoutUser(): Promise<void> {
   storage.logout();
+
+  // 공용 clear 함수 기반 정리
+  storage.clearGuestFlow();
+  storage.clearAnalysisCache();
+
+  // 유틸별 캐시도 명시적으로 정리
+  analysisStorage.clearAll();
+  guestAnalysisStorage.clearAll();
+
+  // 이관 관련 잔여 키 정리
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem("guest-health-migration-payload");
+    sessionStorage.removeItem("guest-health-migration-done");
+    localStorage.removeItem("guest-health-migration-payload");
+  }
 }
-
-/**
- * 회원 탈퇴 취소
- *
- * 백엔드 API가 생기면 아래 주석을 해제해서 사용하면 됨.
- * 예시 경로: /api/v1/users/withdraw/cancel
- */
-
-// export async function cancelWithdraw(): Promise<{ message?: string } | null> {
-//   const response = await fetch(
-//     `${getApiBaseUrl()}/api/v1/users/withdraw/cancel`,
-//     {
-//       method: "POST",
-//       headers: getAuthHeaders(),
-//     }
-//   );
-//
-//   if (!response.ok) {
-//     await parseErrorResponse(response, "회원 탈퇴 취소 실패");
-//   }
-//
-//   return response.json().catch(() => null);
-// }

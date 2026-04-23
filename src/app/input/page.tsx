@@ -8,9 +8,15 @@ import {
   getHealthRecords,
   patchHealthRecord,
 } from "@/src/api/health";
-import { createInitialProfile, updateUserProfile } from "@/src/api/user";
+import {
+  createInitialProfile,
+  updateUserProfile,
+  getDashboard,
+  type UserProfileResponse,
+} from "@/src/api/user";
 import { requestUserHealthAnalysis } from "@/src/api/analysis";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
+import { analysisStorage } from "@/src/utils/analysisStorage";
 import { storage } from "@/src/utils/storage";
 import { clearHealthFlowComplete } from "@/src/utils/health-flow";
 
@@ -40,25 +46,39 @@ type FormState = {
 type FieldErrors = Partial<Record<keyof FormState, string>>;
 type FieldTouched = Partial<Record<keyof FormState, boolean>>;
 
-type UserProfileResponse = {
-  nickname?: string;
-  gender?: string;
-  birth_year?: number | string;
-  birthYear?: number | string;
-  profile_image?: string;
+type DashboardResponse = UserProfileResponse & {
+  height?: number | string;
+  weight?: number | string;
+  systolic_bp?: number | string;
+  diastolic_bp?: number | string;
+  total_cholesterol?: number | string;
+  glucose?: number | string;
+  smoke_yn?: boolean;
+  alcohol_yn?: boolean;
+  exercise_yn?: boolean;
 };
 
 type HealthRecordResponse = {
   record_id?: number;
+  id?: number;
+  user_id?: number;
   systolic_bp?: number;
   diastolic_bp?: number;
   total_cholesterol?: number;
   glucose?: number;
   height?: number;
   weight?: number;
+  bmi?: number;
   smoke_yn?: boolean;
   alcohol_yn?: boolean;
   exercise_yn?: boolean;
+  created_at?: string;
+};
+
+type DashboardProfile = {
+  gender?: string;
+  birth_year?: number | string;
+  birthYear?: number | string;
 };
 
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
@@ -131,36 +151,47 @@ function toDisplayNumber(value?: number | string | null) {
   return String(value);
 }
 
-// 현재 프로젝트에 getProfile API helper가 없다고 가정하고 직접 조회
-async function fetchMyProfile(): Promise<UserProfileResponse | null> {
-  if (typeof window === "undefined") return null;
+function extractHealthRecords(raw: unknown): HealthRecordResponse[] {
+  const data = raw as
+    | HealthRecordResponse[]
+    | { records?: HealthRecordResponse[]; data?: { records?: HealthRecordResponse[] } }
+    | null;
 
-  const token = storage.getAccessToken();
-  if (!token) return null;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.records)) return data.records;
+  if (Array.isArray(data?.data?.records)) return data.data.records;
+  return [];
+}
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
+function extractRecordId(res: any): number | null {
+  const value =
+    res?.record_id ??
+    res?.id ??
+    res?.data?.record_id ??
+    res?.data?.id ??
+    null;
 
-  try {
-    const response = await fetch(`${baseUrl}/api/v1/users/profile`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) return null;
-
-    const json = await response.json();
-    return json?.data ?? json ?? null;
-  } catch (error) {
-    console.warn("프로필 조회 실패:", error);
-    return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && !Number.isNaN(Number(value))) {
+    return Number(value);
   }
+
+  return null;
+}
+
+function extractStatusFromError(error: any): number | null {
+  const matchedStatus = error?.message?.match(/:\s(\d{3})\s/);
+
+  return (
+    error?.response?.status ??
+    error?.status ??
+    (matchedStatus ? Number(matchedStatus[1]) : null)
+  );
 }
 
 export default function InputPage() {
   const router = useRouter();
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
@@ -168,12 +199,10 @@ export default function InputPage() {
   const [touched, setTouched] = useState<FieldTouched>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  const [hasExistingProfile, setHasExistingProfile] = useState(false);
   const [latestRecordId, setLatestRecordId] = useState<number | null>(null);
 
   const progress = ((step + 1) / totalSteps) * 100;
 
-  // 로그인 사용자인 경우 기존 프로필 + 최근 건강기록 자동 반영
   useEffect(() => {
     let cancelled = false;
 
@@ -186,50 +215,65 @@ export default function InputPage() {
       }
 
       try {
-        const [profile, records] = await Promise.all([
-          fetchMyProfile(),
-          getHealthRecords(),
+        const [dashboardRes, recordsRes] = await Promise.all([
+          getDashboard().catch((error) => {
+            console.warn("dashboard 조회 실패:", error);
+            return null;
+          }),
+          getHealthRecords().catch((error) => {
+            console.warn("건강기록 조회 실패:", error);
+            return [];
+          }),
         ]);
 
         if (cancelled) return;
 
-        const latestRecord =
-          Array.isArray(records) && records.length > 0
-            ? (records[0] as HealthRecordResponse)
-            : null;
+        const dashboard = (dashboardRes ?? null) as DashboardResponse | null;
+        const records = extractHealthRecords(recordsRes);
+        const latestRecord = records.length > 0 ? records[0] : null;
 
         setForm((prev) => ({
           ...prev,
-          nickname: profile?.nickname ?? "",
-          gender: toDisplayGender(profile?.gender),
-          birthYear: toDisplayNumber(
-            profile?.birth_year ?? profile?.birthYear ?? ""
+          nickname: dashboard?.nickname ?? prev.nickname,
+          gender: toDisplayGender(dashboard?.gender) || prev.gender,
+          birthYear:
+            toDisplayNumber(dashboard?.birth_year ?? dashboard?.birthYear) ||
+            prev.birthYear,
+
+          height:
+            toDisplayNumber(latestRecord?.height ?? dashboard?.height) || "",
+          weight:
+            toDisplayNumber(latestRecord?.weight ?? dashboard?.weight) || "",
+          systolic:
+            toDisplayNumber(
+              latestRecord?.systolic_bp ?? dashboard?.systolic_bp
+            ) || "",
+          diastolic:
+            toDisplayNumber(
+              latestRecord?.diastolic_bp ?? dashboard?.diastolic_bp
+            ) || "",
+          fastingGlucose:
+            toDisplayNumber(latestRecord?.glucose ?? dashboard?.glucose) || "",
+          totalCholesterol:
+            toDisplayNumber(
+              latestRecord?.total_cholesterol ?? dashboard?.total_cholesterol
+            ) || "",
+
+          smoking: toDisplayYesNo(
+            latestRecord?.smoke_yn ?? dashboard?.smoke_yn
           ),
-
-          height: toDisplayNumber(latestRecord?.height),
-          weight: toDisplayNumber(latestRecord?.weight),
-          systolic: toDisplayNumber(latestRecord?.systolic_bp),
-          diastolic: toDisplayNumber(latestRecord?.diastolic_bp),
-          fastingGlucose: toDisplayNumber(latestRecord?.glucose),
-          totalCholesterol: toDisplayNumber(latestRecord?.total_cholesterol),
-
-          smoking: toDisplayYesNo(latestRecord?.smoke_yn),
           smokingDetail: "",
-          drinking: toDisplayYesNo(latestRecord?.alcohol_yn),
+          drinking: toDisplayYesNo(
+            latestRecord?.alcohol_yn ?? dashboard?.alcohol_yn
+          ),
           drinkingDetail: "",
-          exercise: toDisplayYesNo(latestRecord?.exercise_yn),
+          exercise: toDisplayYesNo(
+            latestRecord?.exercise_yn ?? dashboard?.exercise_yn
+          ),
           exerciseDetail: "",
         }));
 
-        const profileExists = Boolean(
-          profile?.nickname ||
-            profile?.gender ||
-            profile?.birth_year ||
-            profile?.birthYear
-        );
-
-        setHasExistingProfile(profileExists);
-        setLatestRecordId(latestRecord?.record_id ?? null);
+        setLatestRecordId(latestRecord?.record_id ?? latestRecord?.id ?? null);
       } catch (error) {
         console.warn("input 초기값 불러오기 실패:", error);
       } finally {
@@ -480,7 +524,6 @@ export default function InputPage() {
 
   const buildCommonPayload = () => {
     const genderForUser: "M" | "F" = form.gender === "남성" ? "M" : "F";
-    const genderForGuest: "M" | "F" = form.gender === "남성" ? "M" : "F";
 
     return {
       genderForUser,
@@ -498,7 +541,7 @@ export default function InputPage() {
       },
       guestAnalysisPayload: {
         birth_date: `${form.birthYear}-01-01`,
-        gender: genderForGuest,
+        gender: genderForUser,
         height: Number(form.height),
         weight: Number(form.weight),
         systolic_bp: Number(form.systolic),
@@ -512,15 +555,43 @@ export default function InputPage() {
     };
   };
 
-  const extractRecordId = (res: any): number | null => {
-    const value =
-      res?.record_id ??
-      res?.id ??
-      res?.data?.record_id ??
-      res?.data?.id ??
-      null;
+  const saveUserProfileSafely = async (payload: {
+    nickname: string;
+    gender: "M" | "F";
+    birth_year: number;
+  }) => {
+    const dashboard = (await getDashboard().catch(() => null)) as
+      | DashboardProfile
+      | null;
 
-    return typeof value === "number" ? value : null;
+    const hasInitialProfile =
+      dashboard?.gender !== undefined &&
+      dashboard?.gender !== null &&
+      dashboard?.gender !== "";
+
+    if (!hasInitialProfile) {
+      try {
+        await createInitialProfile(payload);
+        return;
+      } catch (error: any) {
+        const status = extractStatusFromError(error);
+
+        if (status === 409) {
+          await updateUserProfile({
+            nickname: payload.nickname,
+            birth_year: payload.birth_year,
+          });
+          return;
+        }
+
+        throw error;
+      }
+    }
+
+    await updateUserProfile({
+      nickname: payload.nickname,
+      birth_year: payload.birth_year,
+    });
   };
 
   const handleAnalyze = async () => {
@@ -557,10 +628,9 @@ export default function InputPage() {
       } = buildCommonPayload();
 
       clearHealthFlowComplete();
-      sessionStorage.removeItem("health-analysis-task");
-      sessionStorage.removeItem("health-analysis-result");
+      analysisStorage.clearAll();
+      storage.clearAnalysisCache();
 
-      // 비회원: guest 분석 흐름
       if (!token) {
         const guestNickname = form.nickname.trim();
         const guestBirthYear = Number(form.birthYear);
@@ -568,7 +638,7 @@ export default function InputPage() {
         sessionStorage.setItem(
           GUEST_MIGRATION_KEY,
           JSON.stringify({
-            nickname: form.nickname.trim(),
+            nickname: guestNickname,
             gender: genderForUser,
             birthYear,
             healthPayload,
@@ -597,11 +667,11 @@ export default function InputPage() {
         guestAnalysisStorage.clearTaskId();
         guestAnalysisStorage.clearResult();
 
-        if (result.task_id) {
+        if (result?.task_id) {
           guestAnalysisStorage.setTaskId(result.task_id);
         }
 
-        if (result.result) {
+        if (result?.result) {
           guestAnalysisStorage.setResult(result.result);
         }
 
@@ -609,22 +679,13 @@ export default function InputPage() {
         return;
       }
 
-      // 회원: 프로필이 있으면 update, 없으면 initial 생성
-      if (hasExistingProfile) {
-        await updateUserProfile({
-          nickname: form.nickname.trim(),
-          birth_year: birthYear,
-        });
-      } else {
-        await createInitialProfile({
-          nickname: form.nickname.trim(),
-          gender: genderForUser,
-          birth_year: birthYear,
-        });
-      }
+      await saveUserProfileSafely({
+        nickname: form.nickname.trim(),
+        gender: genderForUser,
+        birth_year: birthYear,
+      });
 
-      // 회원: 건강기록이 있으면 patch, 없으면 create
-      let savedRecordId: number | null = latestRecordId;
+      let savedRecordId = latestRecordId;
 
       if (latestRecordId) {
         await patchHealthRecord(latestRecordId, healthPayload);
@@ -633,13 +694,11 @@ export default function InputPage() {
         savedRecordId = extractRecordId(createdRecord);
 
         if (!savedRecordId) {
-          const recordsAfterCreate = await getHealthRecords();
+          const recordsAfterCreate = extractHealthRecords(await getHealthRecords());
           const newestRecord =
-            Array.isArray(recordsAfterCreate) && recordsAfterCreate.length > 0
-              ? (recordsAfterCreate[0] as HealthRecordResponse)
-              : null;
+            recordsAfterCreate.length > 0 ? recordsAfterCreate[0] : null;
 
-          savedRecordId = newestRecord?.record_id ?? null;
+          savedRecordId = newestRecord?.record_id ?? newestRecord?.id ?? null;
         }
       }
 

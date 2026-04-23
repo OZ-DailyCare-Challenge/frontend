@@ -30,8 +30,14 @@ const LOCAL_KEYS = {
   postLoginRedirectPath: "post_login_redirect_path",
   healthFlow: "health_flow",
   accessSnapshot: "user_access_snapshot",
+
+  // guest analysis
   guestAnalysisResult: "guest_analysis_result",
   guestAnalysisTaskId: "guest_analysis_task_id",
+  guestAnalysisPendingFlow: "guest_analysis_pending_flow",
+  guestPostLoginRedirect: "guest_post_login_redirect",
+  guestMigrationNeeded: "guest_migration_needed",
+  guestHealthMigrationPayload: "guest-health-migration-payload",
 } as const;
 
 const SESSION_KEYS = {
@@ -42,6 +48,16 @@ const SESSION_KEYS = {
   healthFlowComplete: "health-flow-complete",
   healthAnalysisTask: "health-analysis-task",
 } as const;
+
+function removeLocalKeys(keys: string[]) {
+  if (typeof window === "undefined") return;
+  keys.forEach((key) => localStorage.removeItem(key));
+}
+
+function removeSessionKeys(keys: string[]) {
+  if (typeof window === "undefined") return;
+  keys.forEach((key) => sessionStorage.removeItem(key));
+}
 
 export const storage = {
   getUser(): UserInfo | null {
@@ -206,64 +222,107 @@ export const storage = {
   clearHealthFlow() {
     if (typeof window === "undefined") return;
 
-    localStorage.removeItem(LOCAL_KEYS.healthFlow);
-    sessionStorage.removeItem(SESSION_KEYS.healthFlowComplete);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisTask);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.healthAiMissions);
+    removeLocalKeys([LOCAL_KEYS.healthFlow]);
+
+    removeSessionKeys([
+      SESSION_KEYS.healthFlowComplete,
+      SESSION_KEYS.healthAnalysisTask,
+      SESSION_KEYS.healthAnalysisResult,
+      SESSION_KEYS.healthAiMissions,
+    ]);
   },
 
   clearGuestFlow() {
     if (typeof window === "undefined") return;
 
-    sessionStorage.removeItem(SESSION_KEYS.guestProfile);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.dietAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.healthAiMissions);
-    sessionStorage.removeItem(SESSION_KEYS.healthFlowComplete);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisTask);
+    removeSessionKeys([
+      SESSION_KEYS.guestProfile,
+      SESSION_KEYS.healthAnalysisResult,
+      SESSION_KEYS.dietAnalysisResult,
+      SESSION_KEYS.healthAiMissions,
+      SESSION_KEYS.healthFlowComplete,
+      SESSION_KEYS.healthAnalysisTask,
+    ]);
 
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisResult);
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisTaskId);
+    removeLocalKeys([
+      LOCAL_KEYS.guestAnalysisResult,
+      LOCAL_KEYS.guestAnalysisTaskId,
+      LOCAL_KEYS.guestAnalysisPendingFlow,
+      LOCAL_KEYS.guestPostLoginRedirect,
+      LOCAL_KEYS.guestMigrationNeeded,
+      LOCAL_KEYS.guestHealthMigrationPayload,
+    ]);
+  },
+
+  clearAnalysisCache() {
+    if (typeof window === "undefined") return;
+
+    removeSessionKeys([
+      SESSION_KEYS.healthAnalysisTask,
+      SESSION_KEYS.healthAnalysisResult,
+      SESSION_KEYS.healthAiMissions,
+      SESSION_KEYS.healthFlowComplete,
+    ]);
+
+    removeLocalKeys([
+      LOCAL_KEYS.guestAnalysisResult,
+      LOCAL_KEYS.guestAnalysisTaskId,
+    ]);
   },
 
   clearAll() {
     if (typeof window === "undefined") return;
 
-    localStorage.removeItem(LOCAL_KEYS.user);
-    localStorage.removeItem(LOCAL_KEYS.accessToken);
-    localStorage.removeItem(LOCAL_KEYS.refreshToken);
-    localStorage.removeItem(LOCAL_KEYS.postLoginRedirectPath);
-    localStorage.removeItem(LOCAL_KEYS.healthFlow);
-    localStorage.removeItem(LOCAL_KEYS.accessSnapshot);
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisResult);
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisTaskId);
+    removeLocalKeys([
+      LOCAL_KEYS.user,
+      LOCAL_KEYS.accessToken,
+      LOCAL_KEYS.refreshToken,
+      LOCAL_KEYS.postLoginRedirectPath,
+      LOCAL_KEYS.healthFlow,
+      LOCAL_KEYS.accessSnapshot,
+      LOCAL_KEYS.guestAnalysisResult,
+      LOCAL_KEYS.guestAnalysisTaskId,
+      LOCAL_KEYS.guestAnalysisPendingFlow,
+      LOCAL_KEYS.guestPostLoginRedirect,
+      LOCAL_KEYS.guestMigrationNeeded,
+      LOCAL_KEYS.guestHealthMigrationPayload,
+    ]);
 
-    sessionStorage.removeItem(SESSION_KEYS.guestProfile);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.dietAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.healthAiMissions);
-    sessionStorage.removeItem(SESSION_KEYS.healthFlowComplete);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisTask);
+    removeSessionKeys([
+      SESSION_KEYS.guestProfile,
+      SESSION_KEYS.healthAnalysisResult,
+      SESSION_KEYS.dietAnalysisResult,
+      SESSION_KEYS.healthAiMissions,
+      SESSION_KEYS.healthFlowComplete,
+      SESSION_KEYS.healthAnalysisTask,
+    ]);
   },
 
   logout() {
     if (typeof window === "undefined") return;
 
-    localStorage.removeItem(LOCAL_KEYS.accessToken);
-    localStorage.removeItem(LOCAL_KEYS.refreshToken);
-    localStorage.removeItem(LOCAL_KEYS.user);
-    localStorage.removeItem(LOCAL_KEYS.postLoginRedirectPath);
-    localStorage.removeItem(LOCAL_KEYS.healthFlow);
-    localStorage.removeItem(LOCAL_KEYS.accessSnapshot);
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisResult);
-    localStorage.removeItem(LOCAL_KEYS.guestAnalysisTaskId);
+    removeLocalKeys([
+      LOCAL_KEYS.accessToken,
+      LOCAL_KEYS.refreshToken,
+      LOCAL_KEYS.user,
+      LOCAL_KEYS.postLoginRedirectPath,
+      LOCAL_KEYS.healthFlow,
+      LOCAL_KEYS.accessSnapshot,
+      LOCAL_KEYS.guestAnalysisResult,
+      LOCAL_KEYS.guestAnalysisTaskId,
+      LOCAL_KEYS.guestAnalysisPendingFlow,
+      LOCAL_KEYS.guestPostLoginRedirect,
+      LOCAL_KEYS.guestMigrationNeeded,
+      LOCAL_KEYS.guestHealthMigrationPayload,
+    ]);
 
-    sessionStorage.removeItem(SESSION_KEYS.guestProfile);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.dietAnalysisResult);
-    sessionStorage.removeItem(SESSION_KEYS.healthAiMissions);
-    sessionStorage.removeItem(SESSION_KEYS.healthFlowComplete);
-    sessionStorage.removeItem(SESSION_KEYS.healthAnalysisTask);
+    removeSessionKeys([
+      SESSION_KEYS.guestProfile,
+      SESSION_KEYS.healthAnalysisResult,
+      SESSION_KEYS.dietAnalysisResult,
+      SESSION_KEYS.healthAiMissions,
+      SESSION_KEYS.healthFlowComplete,
+      SESSION_KEYS.healthAnalysisTask,
+    ]);
   },
 };
