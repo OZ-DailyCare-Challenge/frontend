@@ -708,6 +708,14 @@ export default function InputPage() {
 
       const analysisResult = await requestUserHealthAnalysis(savedRecordId);
 
+      // 캐시 히트 시 즉시 결과 반환 (task_id 없음)
+      if (analysisResult?.status === "success") {
+        sessionStorage.setItem("health-analysis-result", JSON.stringify(analysisResult));
+        sessionStorage.setItem("health-flow-complete", "true");
+        router.push("/result");
+        return;
+      }
+
       const taskId =
         analysisResult?.task_id ??
         analysisResult?.id ??
