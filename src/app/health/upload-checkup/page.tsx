@@ -12,6 +12,10 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import {
+  normalizeCheckupOcrResult,
+  requestCheckupOcr,
+} from "@/src/api/checkup";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED_TYPES = [
@@ -20,28 +24,6 @@ const ACCEPTED_TYPES = [
   "image/webp",
   "image/gif",
 ];
-
-type OcrApiResult = {
-  result?: {
-    birth_year?: number | string;
-    gender?: string;
-    height?: number | string;
-    weight?: number | string;
-    systolic_bp?: number | string;
-    diastolic_bp?: number | string;
-    glucose?: number | string;
-    total_cholesterol?: number | string;
-    is_valid?: boolean;
-    confidence?: string;
-    note?: string;
-  };
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    estimated_cost?: number;
-  };
-};
 
 export default function UploadCheckupPage() {
   const router = useRouter();
@@ -189,32 +171,8 @@ export default function UploadCheckupPage() {
       setError("");
       setStatusMessage("건강검진표를 분석하고 있어요...");
 
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-      if (!baseUrl) {
-        throw new Error("NEXT_PUBLIC_API_BASE_URL이 설정되지 않았어요.");
-      }
-
-      const response = await fetch(`${baseUrl}/api/v1/ai/checkup`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = (await response.json()) as OcrApiResult | { detail?: string };
-
-      if (!response.ok) {
-        throw new Error(
-          (data as { detail?: string })?.detail ||
-            "건강검진표 분석 요청에 실패했어요."
-        );
-      }
-
-      const normalized = (data as OcrApiResult)?.result
-        ? (data as OcrApiResult).result
-        : (data as unknown);
+      const data = await requestCheckupOcr(selectedFile);
+      const normalized = normalizeCheckupOcrResult(data);
 
       sessionStorage.setItem("ocr-result", JSON.stringify(normalized));
       sessionStorage.setItem(
@@ -372,7 +330,7 @@ export default function UploadCheckupPage() {
 
                           <h2 className="mt-8 text-2xl font-bold text-[#163126] md:text-[40px] md:leading-tight">
                             이미지를
-                            <br/>
+                            <br />
                             업로드해주세요
                           </h2>
 
@@ -494,8 +452,7 @@ export default function UploadCheckupPage() {
                         수치 자동 추출
                       </p>
                       <p className="mt-3 text-sm leading-7 text-[#163126]/62">
-                        이미지에서 키, 몸무게, 혈압, 혈당, 총 콜레스테롤
-                        같은 주요 수치를 빠르게 읽어와요.
+                        이미지에서 키, 몸무게, 혈압, 혈당, 총 콜레스테롤 같은 주요 수치를 빠르게 읽어와요.
                       </p>
                       <span className="mt-4 inline-flex rounded-full bg-[#EAF6EC] px-3 py-1 text-xs font-semibold text-[#63A775]">
                         OCR 자동 인식
@@ -510,8 +467,7 @@ export default function UploadCheckupPage() {
                         업로드 전 확인
                       </p>
                       <p className="mt-3 text-sm leading-7 text-[#163126]/62">
-                        글자가 선명하고 잘리지 않은 이미지를 올려주세요. 추출 후에는
-                        자동 입력된 값을 직접 확인하고 수정할 수 있어요.
+                        글자가 선명하고 잘리지 않은 이미지를 올려주세요. 추출 후에는 자동 입력된 값을 직접 확인하고 수정할 수 있어요.
                       </p>
                       <span className="mt-4 inline-flex rounded-full bg-[#FFF3DF] px-3 py-1 text-xs font-semibold text-[#C98918]">
                         최종 검토 필요
