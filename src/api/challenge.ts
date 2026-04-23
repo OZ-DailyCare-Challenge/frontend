@@ -28,8 +28,8 @@ export type UserChallengeResponse = {
 };
 
 export type ChallengeLogPayload = {
-  verification_type: string;
-  input_value: string;
+  verification_type: "checklist" | "input" | "cv";
+  input_value?: string;
   cv_result_id?: number;
 };
 
@@ -38,7 +38,7 @@ export type ChallengeLogResponse = {
   user_challenge_id: number;
   log_date: string;
   verification_type: string;
-  input_value: string;
+  input_value?: string;
   cv_result_id?: number;
   created_at: string;
 };
@@ -187,7 +187,7 @@ export async function getChallengesWithFallback(): Promise<ChallengesWithFallbac
 
 /**
  * 챌린지 참여 시작
- * POST /api/v1/challenges/{challenge_id}/join?user_id=...
+ * POST /api/v1/challenges/{challenge_id}/join
  */
 export async function joinChallenge(
   challengeId: number
@@ -327,7 +327,7 @@ export async function logChallengeWithFallback(
         user_challenge_id: userChallengeId,
         log_date: new Date().toISOString().slice(0, 10),
         verification_type: payload.verification_type,
-        input_value: payload.input_value,
+        input_value: payload.input_value ?? "",
         cv_result_id: payload.cv_result_id,
         created_at: new Date().toISOString(),
       },
