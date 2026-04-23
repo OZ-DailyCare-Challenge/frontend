@@ -76,6 +76,27 @@ async function parseErrorResponse(response: Response, defaultMessage: string) {
 }
 
 /**
+ * 게스트 분석 결과 → 회원 계정 이전 (재분석 없이 즉시 반환)
+ * POST /api/v1/health/analysis/migrate-guest
+ */
+export async function migrateGuestAnalysis(guestTaskId: string, recordId: number) {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/health/analysis/migrate-guest`,
+    {
+      method: "POST",
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ guest_task_id: guestTaskId, record_id: recordId }),
+    }
+  );
+
+  if (!response.ok) {
+    await parseErrorResponse(response, "게스트 분석 결과 이전 실패");
+  }
+
+  return response.json();
+}
+
+/**
  * 로그인 사용자 건강 분석 요청
  * POST /api/v1/health/analysis/{record_id}
  */
