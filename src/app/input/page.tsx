@@ -19,6 +19,7 @@ import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { storage } from "@/src/utils/storage";
 import { clearHealthFlowComplete } from "@/src/utils/health-flow";
+import { normalizeCheckupOcrResult } from "@/src/api/checkup";
 
 type Gender = "" | "여성" | "남성";
 type YesNo = "" | "예" | "아니오";
@@ -79,20 +80,6 @@ type DashboardProfile = {
   gender?: string;
   birth_year?: number | string;
   birthYear?: number | string;
-};
-
-type OcrStoredResult = {
-  birth_year?: number | string;
-  gender?: string;
-  height?: number | string;
-  weight?: number | string;
-  systolic_bp?: number | string;
-  diastolic_bp?: number | string;
-  glucose?: number | string;
-  total_cholesterol?: number | string;
-  is_valid?: boolean;
-  confidence?: string;
-  note?: string;
 };
 
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
@@ -234,7 +221,8 @@ export default function InputPage() {
           const stored = sessionStorage.getItem("ocr-result");
 
           if (stored) {
-            const parsed = JSON.parse(stored) as OcrStoredResult;
+            const parsedRaw = JSON.parse(stored);
+            const parsed = normalizeCheckupOcrResult(parsedRaw);
 
             if (!cancelled) {
               setForm((prev) => ({
