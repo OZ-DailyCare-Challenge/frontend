@@ -6,7 +6,7 @@ import { loginWithGoogle } from "@/src/api/auth";
 import { storage } from "@/src/utils/storage";
 import { getDashboard, createInitialProfile, updateUserProfile } from "@/src/api/user";
 import { createHealthRecord } from "@/src/api/health";
-import { requestUserHealthAnalysis, getAnalysisResult } from "@/src/api/analysis";
+import { requestUserHealthAnalysis, getAnalysisResult, migrateGuestAnalysis } from "@/src/api/analysis";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage, type GuestPendingFlow } from "@/src/utils/guestAnalysisStorage";
 
@@ -63,13 +63,28 @@ function AuthCallbackInner() {
             const savedRecordId = extractRecordId(createdRecord);
             if (!savedRecordId) throw new Error("record_id를 찾을 수 없습니다.");
 
-            const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
-            const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
-            if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
+            const guestTaskId = guestAnalysisStorage.getTaskId();
+            let finalResult: any = null;
 
-            sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
+            if (guestTaskId) {
+              // 게스트 분석 결과가 있으면 재분석 없이 이전
+              try {
+                finalResult = await migrateGuestAnalysis(guestTaskId, savedRecordId);
+              } catch {
+                // 게스트 결과 만료 등 실패 시 재분석으로 fallback
+                finalResult = null;
+              }
+            }
 
-            const finalResult = await getAnalysisResult(taskId);
+            if (!finalResult || finalResult.status !== "success") {
+              // fallback: 재분석 요청
+              const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
+              const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
+              if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
+              sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
+              finalResult = await getAnalysisResult(taskId);
+            }
+
             analysisStorage.setResult(finalResult);
             sessionStorage.setItem("health-analysis-result", JSON.stringify(finalResult));
             sessionStorage.setItem("health-flow-complete", "true");
