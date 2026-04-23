@@ -276,7 +276,12 @@ export default function LoginPage() {
       const guestTaskId = guestAnalysisStorage.getTaskId();
       let migrateSuccess = false;
 
-      if (guestTaskId) {
+      // 게스트 분석 결과가 localStorage에 이미 있으면 바로 사용
+      if (guestResult) {
+        analysisStorage.setResult(guestResult);
+        migrateSuccess = true;
+      } else if (guestTaskId) {
+        // task_id가 있으면 migrate-guest API로 DB 저장 시도
         try {
           const migratedResult = await migrateGuestAnalysis(guestTaskId, recordId);
           if (migratedResult?.status === "success") {
@@ -291,7 +296,6 @@ export default function LoginPage() {
       if (!migrateSuccess) {
         const analysisRequest = await requestUserHealthAnalysis(recordId);
 
-        // 캐시 히트 시 즉시 결과 반환 (task_id 없음)
         if (analysisRequest?.status === "success") {
           analysisStorage.setResult(analysisRequest);
         } else {
@@ -303,10 +307,6 @@ export default function LoginPage() {
           if (taskId) {
             analysisStorage.setTaskStore({ taskId, recordId });
           }
-        }
-
-        if (guestResult) {
-          analysisStorage.setResult(guestResult);
         }
       }
 
