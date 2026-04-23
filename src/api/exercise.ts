@@ -1,3 +1,5 @@
+import { storage } from "@/src/utils/storage";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://54.180.116.239";
 
@@ -24,8 +26,14 @@ export async function requestExerciseVerification(
   const formData = new FormData();
   formData.append("image", file);
 
+  const accessToken = storage.getAccessToken();
+  if (!accessToken) {
+    throw new Error("액세스 토큰이 없습니다.");
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/v1/ai/exercise`, {
     method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
     body: formData,
   });
 

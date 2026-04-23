@@ -12,7 +12,7 @@ import {
   getHealthRecords,
   patchHealthRecord,
 } from "@/src/api/health";
-import { requestUserHealthAnalysis } from "@/src/api/analysis";
+import { requestUserHealthAnalysis, migrateGuestAnalysis } from "@/src/api/analysis";
 import {
   createInitialProfile,
   updateUserProfile,
@@ -273,21 +273,41 @@ export default function LoginPage() {
         throw new Error("회원 건강기록 저장에 실패했어요.");
       }
 
-      const analysisRequest = await requestUserHealthAnalysis(recordId);
-      const taskId =
-        analysisRequest?.task_id ??
-        analysisRequest?.id ??
-        analysisRequest?.data?.task_id;
+      const guestTaskId = guestAnalysisStorage.getTaskId();
+      let migrateSuccess = false;
 
-      if (taskId) {
-        analysisStorage.setTaskStore({
-          taskId,
-          recordId,
-        });
+      if (guestTaskId) {
+        try {
+          const migratedResult = await migrateGuestAnalysis(guestTaskId, recordId);
+          if (migratedResult?.status === "success") {
+            analysisStorage.setResult(migratedResult);
+            migrateSuccess = true;
+          }
+        } catch {
+          migrateSuccess = false;
+        }
       }
 
-      if (guestResult) {
-        analysisStorage.setResult(guestResult);
+      if (!migrateSuccess) {
+        const analysisRequest = await requestUserHealthAnalysis(recordId);
+
+        // 캐시 히트 시 즉시 결과 반환 (task_id 없음)
+        if (analysisRequest?.status === "success") {
+          analysisStorage.setResult(analysisRequest);
+        } else {
+          const taskId =
+            analysisRequest?.task_id ??
+            analysisRequest?.id ??
+            analysisRequest?.data?.task_id;
+
+          if (taskId) {
+            analysisStorage.setTaskStore({ taskId, recordId });
+          }
+        }
+
+        if (guestResult) {
+          analysisStorage.setResult(guestResult);
+        }
       }
 
       markHealthFlowComplete();
@@ -313,6 +333,8 @@ export default function LoginPage() {
 
     analysisStorage.clearAll();
     storage.clearAnalysisCache();
+    sessionStorage.removeItem("health-analysis-task");
+    sessionStorage.removeItem("health-analysis-result");
 
     if (isDifferentUser) {
       storage.clearHealthFlow();
