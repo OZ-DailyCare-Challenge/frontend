@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   requestGuestHealthAnalysis,
   createHealthRecord,
@@ -79,6 +79,20 @@ type DashboardProfile = {
   gender?: string;
   birth_year?: number | string;
   birthYear?: number | string;
+};
+
+type OcrStoredResult = {
+  birth_year?: number | string;
+  gender?: string;
+  height?: number | string;
+  weight?: number | string;
+  systolic_bp?: number | string;
+  diastolic_bp?: number | string;
+  glucose?: number | string;
+  total_cholesterol?: number | string;
+  is_valid?: boolean;
+  confidence?: string;
+  note?: string;
 };
 
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
@@ -191,6 +205,13 @@ function extractStatusFromError(error: any): number | null {
 
 export default function InputPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const mode = searchParams.get("mode") ?? "first";
+  const isEditMode = mode === "edit";
+  const isNewMode = mode === "new";
+  const isFirstMode = mode === "first";
+  const isOcrMode = mode === "ocr";
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -198,6 +219,7 @@ export default function InputPage() {
   const [prefilling, setPrefilling] = useState(true);
   const [touched, setTouched] = useState<FieldTouched>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [ocrPrefilled, setOcrPrefilled] = useState(false);
 
   const [latestRecordId, setLatestRecordId] = useState<number | null>(null);
 
@@ -207,7 +229,56 @@ export default function InputPage() {
     let cancelled = false;
 
     const bootstrap = async () => {
+      if (isOcrMode) {
+        try {
+          const stored = sessionStorage.getItem("ocr-result");
+
+          if (stored) {
+            const parsed = JSON.parse(stored) as OcrStoredResult;
+
+            if (!cancelled) {
+              setForm((prev) => ({
+                ...prev,
+                birthYear: toDisplayNumber(parsed.birth_year) || prev.birthYear,
+                gender: toDisplayGender(parsed.gender) || prev.gender,
+                height: toDisplayNumber(parsed.height) || prev.height,
+                weight: toDisplayNumber(parsed.weight) || prev.weight,
+                systolic: toDisplayNumber(parsed.systolic_bp) || prev.systolic,
+                diastolic:
+                  toDisplayNumber(parsed.diastolic_bp) || prev.diastolic,
+                fastingGlucose:
+                  toDisplayNumber(parsed.glucose) || prev.fastingGlucose,
+                totalCholesterol:
+                  toDisplayNumber(parsed.total_cholesterol) ||
+                  prev.totalCholesterol,
+              }));
+              setOcrPrefilled(true);
+            }
+
+            sessionStorage.removeItem("ocr-result");
+          }
+        } catch (error) {
+          console.error("OCR 결과 파싱 실패:", error);
+        } finally {
+          if (!cancelled) {
+            setLatestRecordId(null);
+            setPrefilling(false);
+          }
+        }
+        return;
+      }
+
       const token = storage.getAccessToken();
+
+      if (isNewMode) {
+        if (!cancelled) {
+          setForm(initialForm);
+          setLatestRecordId(null);
+          setPrefilling(false);
+          setOcrPrefilled(false);
+        }
+        return;
+      }
 
       if (!token) {
         if (!cancelled) setPrefilling(false);
@@ -232,48 +303,51 @@ export default function InputPage() {
         const records = extractHealthRecords(recordsRes);
         const latestRecord = records.length > 0 ? records[0] : null;
 
-        setForm((prev) => ({
-          ...prev,
-          nickname: dashboard?.nickname ?? prev.nickname,
-          gender: toDisplayGender(dashboard?.gender) || prev.gender,
-          birthYear:
-            toDisplayNumber(dashboard?.birth_year ?? dashboard?.birthYear) ||
-            prev.birthYear,
+        if (isEditMode || isFirstMode) {
+          setForm((prev) => ({
+            ...prev,
+            nickname: dashboard?.nickname ?? prev.nickname,
+            gender: toDisplayGender(dashboard?.gender) || prev.gender,
+            birthYear:
+              toDisplayNumber(dashboard?.birth_year ?? dashboard?.birthYear) ||
+              prev.birthYear,
 
-          height:
-            toDisplayNumber(latestRecord?.height ?? dashboard?.height) || "",
-          weight:
-            toDisplayNumber(latestRecord?.weight ?? dashboard?.weight) || "",
-          systolic:
-            toDisplayNumber(
-              latestRecord?.systolic_bp ?? dashboard?.systolic_bp
-            ) || "",
-          diastolic:
-            toDisplayNumber(
-              latestRecord?.diastolic_bp ?? dashboard?.diastolic_bp
-            ) || "",
-          fastingGlucose:
-            toDisplayNumber(latestRecord?.glucose ?? dashboard?.glucose) || "",
-          totalCholesterol:
-            toDisplayNumber(
-              latestRecord?.total_cholesterol ?? dashboard?.total_cholesterol
-            ) || "",
+            height:
+              toDisplayNumber(latestRecord?.height ?? dashboard?.height) || "",
+            weight:
+              toDisplayNumber(latestRecord?.weight ?? dashboard?.weight) || "",
+            systolic:
+              toDisplayNumber(
+                latestRecord?.systolic_bp ?? dashboard?.systolic_bp
+              ) || "",
+            diastolic:
+              toDisplayNumber(
+                latestRecord?.diastolic_bp ?? dashboard?.diastolic_bp
+              ) || "",
+            fastingGlucose:
+              toDisplayNumber(latestRecord?.glucose ?? dashboard?.glucose) || "",
+            totalCholesterol:
+              toDisplayNumber(
+                latestRecord?.total_cholesterol ?? dashboard?.total_cholesterol
+              ) || "",
 
-          smoking: toDisplayYesNo(
-            latestRecord?.smoke_yn ?? dashboard?.smoke_yn
-          ),
-          smokingDetail: "",
-          drinking: toDisplayYesNo(
-            latestRecord?.alcohol_yn ?? dashboard?.alcohol_yn
-          ),
-          drinkingDetail: "",
-          exercise: toDisplayYesNo(
-            latestRecord?.exercise_yn ?? dashboard?.exercise_yn
-          ),
-          exerciseDetail: "",
-        }));
+            smoking: toDisplayYesNo(
+              latestRecord?.smoke_yn ?? dashboard?.smoke_yn
+            ),
+            smokingDetail: "",
+            drinking: toDisplayYesNo(
+              latestRecord?.alcohol_yn ?? dashboard?.alcohol_yn
+            ),
+            drinkingDetail: "",
+            exercise: toDisplayYesNo(
+              latestRecord?.exercise_yn ?? dashboard?.exercise_yn
+            ),
+            exerciseDetail: "",
+          }));
 
-        setLatestRecordId(latestRecord?.record_id ?? latestRecord?.id ?? null);
+          setLatestRecordId(latestRecord?.record_id ?? latestRecord?.id ?? null);
+          setOcrPrefilled(false);
+        }
       } catch (error) {
         console.warn("input 초기값 불러오기 실패:", error);
       } finally {
@@ -286,9 +360,17 @@ export default function InputPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isEditMode, isFirstMode, isNewMode, isOcrMode]);
 
   const guideMessage = useMemo(() => {
+    if (ocrPrefilled && step === 0) {
+      return {
+        eyebrow: "buddy guide",
+        title: "검진표에서 읽은 값이에요",
+        desc: "자동으로 채워진 값이 맞는지 한 번 확인해보면 좋아요.",
+      };
+    }
+
     if (step === 0) {
       return {
         eyebrow: "buddy guide",
@@ -315,7 +397,7 @@ export default function InputPage() {
       title: "이제 입력 내용을 확인해요",
       desc: "입력한 정보를 한 번 더 확인하고 건강 분석을 시작해요.",
     };
-  }, [step]);
+  }, [ocrPrefilled, step]);
 
   const guideVisual = useMemo(() => {
     if (step === 3) {
@@ -468,6 +550,14 @@ export default function InputPage() {
     (step === 1 && isHealthValid) ||
     (step === 2 && isHabitValid) ||
     step === 3;
+
+  const submitLabel = submitting
+    ? isEditMode || isOcrMode
+      ? "다시 분석 요청 중..."
+      : "분석 요청 중..."
+    : isEditMode || isOcrMode
+    ? "다시 분석하기"
+    : "건강 분석하기";
 
   const updateField = <K extends keyof FormState>(
     key: K,
@@ -747,7 +837,7 @@ export default function InputPage() {
   };
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-white text-[#163126]">
+    <main className="min-h-screen overflow-x-hidden bg-[linear-gradient(180deg,#F7FBF8_0%,#EEF7F0_100%)] text-[#163126]">
       <header className="flex items-center justify-between px-4 py-5 sm:px-6 md:px-10">
         <button
           onClick={() => router.push("/")}
@@ -773,10 +863,10 @@ export default function InputPage() {
         </div>
 
         <div className="mt-10 flex justify-center">
-          <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
             <aside className="hidden lg:flex lg:justify-end">
-              <div className="mt-6 flex items-end gap-4">
-                <div className="relative mt-4 w-[220px] rounded-[24px] border border-white/40 bg-white/72 px-5 py-5 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
+              <div className="mt-8 flex items-end gap-4">
+                <div className="relative mt-4 w-[240px] rounded-[24px] border border-white/40 bg-white/72 px-5 py-5 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
                   <p className="text-sm font-medium text-[#2E7D5B]">
                     {guideMessage.eyebrow}
                   </p>
@@ -789,11 +879,11 @@ export default function InputPage() {
                   <div className="absolute right-[-8px] top-8 h-4 w-4 rotate-45 border-r border-t border-white/40 bg-white/72" />
                 </div>
 
-                <div className="flex h-[160px] w-[160px] shrink-0 items-end justify-center">
+                <div className="flex h-[190px] w-[190px] shrink-0 items-end justify-center">
                   <img
                     src={guideVisual.imageSrc}
                     alt={guideVisual.imageAlt}
-                    className="h-[150px] w-[150px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
+                    className="h-[180px] w-[180px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
                   />
                 </div>
               </div>
@@ -813,18 +903,18 @@ export default function InputPage() {
                   </p>
                 </div>
 
-                <div className="flex h-[88px] w-[88px] shrink-0 items-end justify-center">
+                <div className="flex h-[96px] w-[96px] shrink-0 items-end justify-center">
                   <img
                     src={guideVisual.imageSrc}
                     alt={guideVisual.imageAlt}
-                    className="h-[78px] w-[78px] object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
+                    className="h-[88px] w-[88px] object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
                   />
                 </div>
               </div>
             </div>
 
             <div className="w-full">
-              <section className="mx-auto w-full max-w-3xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
+              <section className="mx-auto w-full max-w-4xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
                 {prefilling ? (
                   <div className="flex min-h-[360px] items-center justify-center">
                     <p className="text-sm text-[#163126]/55">
@@ -838,8 +928,34 @@ export default function InputPage() {
                     <StepHeader
                       eyebrow="basic info"
                       title="기본 정보 입력"
-                      desc="최근 건강검진 수치와 생활습관 정보를 입력하면 결과를 분석해드려요."
+                      desc={
+                        ocrPrefilled
+                          ? "건강검진표에서 읽은 값을 바탕으로 일부 항목이 자동으로 채워졌어요. 맞는지 확인하고 수정해주세요."
+                          : "최근 건강검진 수치와 생활습관 정보를 입력하면 결과를 분석해드려요."
+                      }
                     />
+
+                    <div className="mb-5 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/health/upload-checkup?mode=${
+                              isEditMode ? "reanalyze" : "first"
+                            }`
+                          )
+                        }
+                        className="rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-sm font-semibold text-[#163126] transition hover:bg-[#f7faf8]"
+                      >
+                        건강검진표 업로드로 자동 입력
+                      </button>
+
+                      {ocrPrefilled ? (
+                        <span className="inline-flex items-center rounded-full bg-[#EAF6EC] px-4 py-2 text-sm font-semibold text-[#2E7D5B]">
+                          검진표 기반 자동 입력됨
+                        </span>
+                      ) : null}
+                    </div>
 
                     <p className="mb-5 text-xs leading-6 text-[#163126]/45 md:text-sm">
                       키와 몸무게는 소수점 없이 입력해주세요. 소수점 값은 반올림해서 입력하면 돼요.
@@ -1116,11 +1232,11 @@ export default function InputPage() {
                 )}
               </section>
 
-              <div className="mx-auto mt-8 flex w-full max-w-3xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mx-auto mt-8 flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   onClick={handlePrev}
                   disabled={step === 0 || prefilling}
-                  className="w-full rounded-full border border-[#163126]/10 bg-white/72 px-6 py-3 text-sm font-semibold text-[#163126] transition disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto"
+                  className="w-full rounded-full border border-[#163126]/10 bg-white/72 px-6 py-3 text-sm font-semibold text-[#163126] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto"
                 >
                   이전
                 </button>
@@ -1139,7 +1255,7 @@ export default function InputPage() {
                     disabled={!isAllValid || submitting || prefilling}
                     className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
                   >
-                    {submitting ? "분석 요청 중..." : "건강 분석하기"}
+                    {submitLabel}
                   </button>
                 )}
               </div>
@@ -1165,7 +1281,7 @@ function StepHeader({
       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2E7D5B]">
         {eyebrow}
       </p>
-      <h1 className="mt-3 text-2xl font-bold leading-tight sm:text-3xl md:text-4xl lg:text-5xl">
+      <h1 className="mt-3 text-2xl font-bold leading-tight text-[#163126] sm:text-3xl md:text-4xl lg:text-5xl">
         {title}
       </h1>
       <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-[#163126]/68 md:text-base md:leading-7">
@@ -1216,7 +1332,7 @@ function InputField({
           onChange(e.target.value);
         }}
         placeholder={placeholder}
-        className={`h-12 w-full rounded-xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 sm:h-[52px] md:h-14 md:rounded-2xl md:px-5 ${
+        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 sm:h-[52px] md:h-14 md:px-5 ${
           error
             ? "border-[#e58b8b] focus:border-[#d8614d]"
             : "border-white/40 focus:border-[#7EE8A7]"
@@ -1252,7 +1368,7 @@ function SelectField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-12 w-full rounded-xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md sm:h-[52px] md:h-14 md:rounded-2xl md:px-5 ${
+        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md sm:h-[52px] md:h-14 md:px-5 ${
           error
             ? "border-[#e58b8b] focus:border-[#d8614d]"
             : "border-white/40 focus:border-[#7EE8A7]"
