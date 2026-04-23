@@ -77,7 +77,7 @@ type StoredActiveChallengeMap = Record<
   number,
   {
     userChallengeId: number;
-    status: ChallengeStatus;
+    status: string;
     currentStreak: number;
     logs: Array<boolean | null>;
     lastSubmittedDate: string | null;
@@ -86,6 +86,13 @@ type StoredActiveChallengeMap = Record<
 
 const dayLabels = Array.from({ length: 30 }, (_, i) => `${i + 1}일`);
 const ACTIVE_CHALLENGES_STORAGE_KEY = "active-user-challenges-v1";
+
+function normalizeChallengeStatus(status?: string | null): ChallengeStatus {
+  if (status === "active") return "in_progress";
+  if (status === "in_progress") return "in_progress";
+  if (status === "done") return "done";
+  return "locked";
+}
 
 function getStoredActiveChallengeMap(): StoredActiveChallengeMap {
   if (typeof window === "undefined") return {};
@@ -155,9 +162,11 @@ function mapApiChallengeToUi(
 
   const successCount = logs.filter((v) => v === true).length;
 
-  const resolvedStatus: ChallengeStatus =
-    active?.status ??
-    (successCount >= completionWindow ? "done" : "locked");
+  const resolvedStatus: ChallengeStatus = active?.status
+    ? normalizeChallengeStatus(active.status)
+    : successCount >= completionWindow
+    ? "done"
+    : "locked";
 
   const firstEmptyIndex = logs.findIndex((log) => log === null);
   const currentDay =
@@ -241,6 +250,13 @@ function removeChallengeItemFromStorage(challengeId: number) {
   const current = getStoredActiveChallengeMap();
   delete current[challengeId];
   setStoredActiveChallengeMap(current);
+}
+
+function extractStatusFromError(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+
+  const matchedStatus = error.message.match(/:\s(\d{3})\s/);
+  return matchedStatus ? Number(matchedStatus[1]) : null;
 }
 
 export default function ChallengeScreen() {
@@ -428,7 +444,7 @@ export default function ChallengeScreen() {
         ...selectedChallenge,
         userChallengeId: joined.id,
         currentStreak: joined.current_streak ?? 0,
-        status: "in_progress",
+        status: normalizeChallengeStatus(joined.status),
         logs:
           selectedChallenge.logs?.length === selectedChallenge.durationDays
             ? selectedChallenge.logs
@@ -445,6 +461,37 @@ export default function ChallengeScreen() {
       );
     } catch (error) {
       console.error("챌린지 시작 실패:", error);
+
+      const errorStatus = extractStatusFromError(error);
+
+      if (errorStatus === 409) {
+        const updatedChallenge: ChallengeItem = {
+          ...selectedChallenge,
+          status: "in_progress",
+          logs:
+            selectedChallenge.logs?.length === selectedChallenge.durationDays
+              ? selectedChallenge.logs
+              : Array(selectedChallenge.durationDays).fill(null),
+        };
+
+        updateBaseChallenge(updatedChallenge);
+
+        const current = getStoredActiveChallengeMap();
+        const existing = current[selectedChallenge.challengeId];
+
+        if (existing?.userChallengeId) {
+          persistChallengeItemToStorage({
+            ...updatedChallenge,
+            userChallengeId: existing.userChallengeId,
+            currentStreak: existing.currentStreak ?? 0,
+            lastSubmittedDate: existing.lastSubmittedDate ?? null,
+          });
+        }
+
+        alert("이미 참여 중인 챌린지예요. 진행중 상태로 반영했어요.");
+        return;
+      }
+
       alert("챌린지 시작에 실패했어요.");
     } finally {
       setLoadingAction(false);
