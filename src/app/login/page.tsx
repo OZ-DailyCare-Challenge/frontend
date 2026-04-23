@@ -313,6 +313,8 @@ export default function LoginPage() {
 
     analysisStorage.clearAll();
     storage.clearAnalysisCache();
+    sessionStorage.removeItem("health-analysis-task");
+    sessionStorage.removeItem("health-analysis-result");
 
     if (isDifferentUser) {
       storage.clearHealthFlow();
