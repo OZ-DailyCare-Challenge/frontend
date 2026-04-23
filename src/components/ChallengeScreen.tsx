@@ -12,7 +12,6 @@ import {
   X,
   Camera,
 } from "lucide-react";
-import { storage } from "@/src/utils/storage";
 import {
   getChallengesWithFallback,
   getRecommendations,
@@ -37,6 +36,19 @@ type Mission = {
   action?: string;
   reason?: string;
 };
+
+type ChallengeLogPayload =
+  | {
+      verification_type: "checklist";
+    }
+  | {
+      verification_type: "input";
+      input_value: string;
+    }
+  | {
+      verification_type: "cv";
+      cv_result_id?: number;
+    };
 
 type ChallengeItem = {
   id: number | string;
@@ -244,7 +256,9 @@ export default function ChallengeScreen() {
   const [pulseChallengeId, setPulseChallengeId] = useState<
     number | string | null
   >(null);
-  const [ragRecommendations, setRagRecommendations] = useState<RecommendItem[]>([]);
+  const [ragRecommendations, setRagRecommendations] = useState<RecommendItem[]>(
+    []
+  );
   const [aiMissions, setAiMissions] = useState<Mission[]>([]);
   const [photoSubmitting, setPhotoSubmitting] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -285,8 +299,8 @@ export default function ChallengeScreen() {
         if (challengeResponse.status === "fulfilled") {
           setUsingFallbackChallenges(challengeResponse.value.isFallback);
           const activeMap = getStoredActiveChallengeMap();
-          const mapped = (challengeResponse.value.challenges ?? []).map((challenge) =>
-            mapApiChallengeToUi(challenge, activeMap)
+          const mapped = (challengeResponse.value.challenges ?? []).map(
+            (challenge) => mapApiChallengeToUi(challenge, activeMap)
           );
           setBaseChallenges(mapped);
         } else {
@@ -310,7 +324,7 @@ export default function ChallengeScreen() {
       return applyRagRecommendations(baseChallenges, ragRecommendations);
     }
     return mergeAiRecommendations(baseChallenges, aiMissions);
-  }, [baseChallenges, aiMissions]);
+  }, [baseChallenges, ragRecommendations, aiMissions]);
 
   const streak = useMemo(() => {
     return baseChallenges.reduce(
@@ -350,8 +364,7 @@ export default function ChallengeScreen() {
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const isSubmittedToday =
-    selectedChallenge &&
-    typeof selectedChallenge.id === "number" &&
+    !!selectedChallenge &&
     selectedChallenge.lastSubmittedDate === todayKey;
 
   const detailProgressPercent = selectedChallenge
@@ -537,20 +550,22 @@ export default function ChallengeScreen() {
       ? "input"
       : mapVerificationTypeToApi(challenge.verification);
 
-    const payload: {
-      verification_type: "checklist" | "input" | "cv";
-      input_value?: string;
-      cv_result_id?: number;
-    } = {
-      verification_type: verificationType,
-    };
+    let payload: ChallengeLogPayload;
 
     if (verificationType === "input") {
-      payload.input_value = inputValue ?? "";
-    }
-
-    if (verificationType === "cv" && typeof cvResultId === "number") {
-      payload.cv_result_id = cvResultId;
+      payload = {
+        verification_type: "input",
+        input_value: inputValue ?? "",
+      };
+    } else if (verificationType === "cv") {
+      payload = {
+        verification_type: "cv",
+        ...(typeof cvResultId === "number" ? { cv_result_id: cvResultId } : {}),
+      };
+    } else {
+      payload = {
+        verification_type: "checklist",
+      };
     }
 
     await logChallengeWithFallback(challenge.userChallengeId, payload);
@@ -668,7 +683,8 @@ export default function ChallengeScreen() {
 
         {usingFallbackChallenges && (
           <div className="mb-6 rounded-[18px] border border-[#f3dfb2] bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6c00]">
-            현재는 임시 챌린지 목록을 보여주고 있어요. API 연결 후 실제 데이터로 자동 전환돼요.
+            현재는 임시 챌린지 목록을 보여주고 있어요. API 연결 후 실제 데이터로
+            자동 전환돼요.
           </div>
         )}
 
@@ -863,16 +879,17 @@ export default function ChallengeScreen() {
                       {selectedChallenge.description}
                     </p>
 
-                    {selectedChallenge.aiRecommended && selectedChallenge.aiReason && (
-                      <div className="mt-4 rounded-[18px] bg-[#fff8df] px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6c00]">
-                          AI 추천 이유
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[#5c4a00]">
-                          {selectedChallenge.aiReason}
-                        </p>
-                      </div>
-                    )}
+                    {selectedChallenge.aiRecommended &&
+                      selectedChallenge.aiReason && (
+                        <div className="mt-4 rounded-[18px] bg-[#fff8df] px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6c00]">
+                            AI 추천 이유
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-[#5c4a00]">
+                            {selectedChallenge.aiReason}
+                          </p>
+                        </div>
+                      )}
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <InfoCard label="기대효과" value={selectedChallenge.effect} />
@@ -895,9 +912,7 @@ export default function ChallengeScreen() {
                         <p className="font-semibold text-[#163126]">
                           포인트 안내
                         </p>
-                        <p className="mt-2">
-                          운동 캡처 인증 성공 시 +100포인트
-                        </p>
+                        <p className="mt-2">운동 캡처 인증 성공 시 +100포인트</p>
                       </div>
                     )}
 
@@ -1273,8 +1288,7 @@ function ExerciseVerifyModal({
             <br />
             <br />
             ※ 2개 이상 확인되면 인증 성공
-            <br />
-            ※ 흐리거나 잘린 이미지는 인증이 실패할 수 있어요
+            <br />※ 흐리거나 잘린 이미지는 인증이 실패할 수 있어요
           </div>
         </div>
 
@@ -1501,7 +1515,9 @@ function applyRagRecommendations(
   );
 
   const recommended = baseChallenges
-    .filter((c) => typeof c.challengeId === "number" && recommendMap.has(c.challengeId))
+    .filter(
+      (c) => typeof c.challengeId === "number" && recommendMap.has(c.challengeId)
+    )
     .map((c) => ({
       ...c,
       aiRecommended: true,
