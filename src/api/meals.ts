@@ -4,6 +4,7 @@ import type {
   MealAnalysisStatusResponse,
   RequestMealAnalysisResponse,
 } from "@/src/types/meals";
+import { storage } from "@/src/utils/storage";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -24,10 +25,16 @@ export async function requestMealAnalysis(
       ? "/api/v1/ai/meals/paid"
       : "/api/v1/ai/meals/free";
 
+  const accessToken = storage.getAccessToken();
+  if (!accessToken) {
+    throw new Error("액세스 토큰이 없습니다.");
+  }
+
   const response = await axios.post<RequestMealAnalysisResponse>(
     `${API_BASE_URL}${path}`,
     formData,
     {
+      headers: { Authorization: `Bearer ${accessToken}` },
       withCredentials: true,
     }
   );
