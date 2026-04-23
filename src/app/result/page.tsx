@@ -887,7 +887,7 @@ export default function ResultPage() {
           >
             <button
               type="button"
-              onClick={() => router.push("/input")}
+              onClick={() => router.push("/health/start?mode=reanalyze")}
               className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               다시 분석하기
