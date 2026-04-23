@@ -290,13 +290,19 @@ export default function LoginPage() {
 
       if (!migrateSuccess) {
         const analysisRequest = await requestUserHealthAnalysis(recordId);
-        const taskId =
-          analysisRequest?.task_id ??
-          analysisRequest?.id ??
-          analysisRequest?.data?.task_id;
 
-        if (taskId) {
-          analysisStorage.setTaskStore({ taskId, recordId });
+        // 캐시 히트 시 즉시 결과 반환 (task_id 없음)
+        if (analysisRequest?.status === "success") {
+          analysisStorage.setResult(analysisRequest);
+        } else {
+          const taskId =
+            analysisRequest?.task_id ??
+            analysisRequest?.id ??
+            analysisRequest?.data?.task_id;
+
+          if (taskId) {
+            analysisStorage.setTaskStore({ taskId, recordId });
+          }
         }
 
         if (guestResult) {
