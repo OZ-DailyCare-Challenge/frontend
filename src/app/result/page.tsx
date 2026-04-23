@@ -337,6 +337,22 @@ function AgeInline({
   );
 }
 
+function getStoredSessionResult(): AnalysisResultResponse | null {
+  const fromAnalysisStorage =
+    analysisStorage.getResult<AnalysisResultResponse>() ?? null;
+
+  if (fromAnalysisStorage) return fromAnalysisStorage;
+
+  const raw = sessionStorage.getItem("health-analysis-result");
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as AnalysisResultResponse;
+  } catch {
+    return null;
+  }
+}
+
 export default function ResultPage() {
   const router = useRouter();
 
@@ -360,9 +376,19 @@ export default function ResultPage() {
       try {
         setLoading(true);
 
+        const taskRaw = sessionStorage.getItem("health-analysis-task");
+        const flowComplete = sessionStorage.getItem("health-flow-complete");
+
+        if (taskRaw && flowComplete !== "true") {
+          router.replace("/analysis-loading");
+          return;
+        }
+
         const isLoggedIn = Boolean(storage.getAccessToken());
 
         if (isLoggedIn) {
+          const storedResult = getStoredSessionResult();
+
           const [history, dashboard] = await Promise.all([
             getAnalysisHistory().catch((error) => {
               console.warn("분석 히스토리 조회 실패:", error);
@@ -376,22 +402,17 @@ export default function ResultPage() {
 
           if (cancelled) return;
 
-          if (history?.items?.length) {
+          if (storedResult) {
+            setResult(normalizeFromAnalysisResult(storedResult, "session"));
+            markHealthFlowComplete();
+            useAccessStore.getState().markAnalysisComplete();
+          } else if (history?.items?.length) {
             const latest = normalizeFromHistoryItem(history.items[0]);
             setResult(latest);
             markHealthFlowComplete();
             useAccessStore.getState().markAnalysisComplete();
           } else {
-            const storedResult =
-              analysisStorage.getResult<AnalysisResultResponse>();
-
-            if (storedResult) {
-              setResult(normalizeFromAnalysisResult(storedResult, "session"));
-              markHealthFlowComplete();
-              useAccessStore.getState().markAnalysisComplete();
-            } else {
-              setResult(emptyResult());
-            }
+            setResult(emptyResult());
           }
 
           const profile = (dashboard ?? null) as DashboardProfile | null;
@@ -465,7 +486,7 @@ export default function ResultPage() {
     return () => {
       cancelled = true;
     };
-  }, [mounted]);
+  }, [mounted, router]);
 
   const actualAgeNumber = useMemo(() => {
     const parsed = Number(actualAgeText.replace("세", ""));
@@ -517,6 +538,13 @@ export default function ResultPage() {
     }
 
     router.push("/challenge");
+  };
+
+  const handleReanalyze = () => {
+    sessionStorage.removeItem("health-analysis-result");
+    sessionStorage.removeItem("health-flow-complete");
+    sessionStorage.removeItem("health-analysis-task");
+    router.push("/health/start?mode=reanalyze");
   };
 
   if (!mounted) {
@@ -887,7 +915,7 @@ export default function ResultPage() {
           >
             <button
               type="button"
-              onClick={() => router.push("/health/start?mode=reanalyze")}
+              onClick={handleReanalyze}
               className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               다시 분석하기
