@@ -511,7 +511,7 @@ export default function ChallengeScreen() {
 
   const submitChallengeLog = async (
     challenge: ChallengeItem,
-    inputValue: string,
+    inputValue?: string,
     cvResultId?: number,
     forceInputMode?: boolean
   ) => {
@@ -524,11 +524,23 @@ export default function ChallengeScreen() {
       ? "input"
       : mapVerificationTypeToApi(challenge.verification);
 
-    await logChallengeWithFallback(challenge.userChallengeId, {
+    const payload: {
+      verification_type: "checklist" | "input" | "cv";
+      input_value?: string;
+      cv_result_id?: number;
+    } = {
       verification_type: verificationType,
-      input_value: inputValue,
-      cv_result_id: cvResultId,
-    });
+    };
+
+    if (verificationType === "input") {
+      payload.input_value = inputValue ?? "";
+    }
+
+    if (verificationType === "cv" && typeof cvResultId === "number") {
+      payload.cv_result_id = cvResultId;
+    }
+
+    await logChallengeWithFallback(challenge.userChallengeId, payload);
 
     const success = true;
 
@@ -538,14 +550,14 @@ export default function ChallengeScreen() {
     triggerCardPulse(challenge.id);
   };
 
-  const handleDailyCheck = async (value: boolean) => {
+  const handleDailyCheck = async (_value: boolean) => {
     if (!selectedChallenge || selectedChallenge.status !== "in_progress") return;
     if (typeof selectedChallenge.challengeId !== "number") return;
     if (isSubmittedToday) return;
 
     try {
       setLoadingAction(true);
-      await submitChallengeLog(selectedChallenge, value ? "1" : "0");
+      await submitChallengeLog(selectedChallenge);
       alert("오늘 인증이 완료되었어요.");
     } catch (error) {
       console.error("챌린지 체크 인증 실패:", error);
@@ -596,7 +608,19 @@ export default function ChallengeScreen() {
 
       console.log("exercise verify result:", verifyResult);
 
-      await submitChallengeLog(selectedChallenge, "1", undefined, true);
+      const resolvedCvResultId =
+        typeof (verifyResult as { cv_result_id?: number })?.cv_result_id ===
+        "number"
+          ? (verifyResult as { cv_result_id: number }).cv_result_id
+          : typeof (verifyResult as { result_id?: number })?.result_id === "number"
+          ? (verifyResult as { result_id: number }).result_id
+          : undefined;
+
+      await submitChallengeLog(
+        selectedChallenge,
+        undefined,
+        resolvedCvResultId
+      );
 
       setPhotoUploaded(true);
       setExerciseVerifyOpen(false);
