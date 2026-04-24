@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -10,15 +9,12 @@ import {
   Coins,
   HeartPulse,
   Leaf,
-  Loader2,
   Sparkles,
 } from "lucide-react";
 import type {
   MealAnalysisMode,
   MealAnalysisResult,
-  RequestMealAnalysisResponse,
 } from "@/src/types/meals";
-import { requestMealAnalysis } from "@/src/api/meals";
 
 type NormalizedMealResult = MealAnalysisResult & {
   feedback?: string;
@@ -29,10 +25,12 @@ type NormalizedMealResult = MealAnalysisResult & {
   vitamin_info?: {
     level?: string;
     description?: string;
+    detail?: string;
   } | null;
   mineral_info?: {
     level?: string;
     description?: string;
+    detail?: string;
   } | null;
 };
 
@@ -40,6 +38,19 @@ type Props = {
   mode: MealAnalysisMode;
   image: string;
   result: NormalizedMealResult;
+};
+
+type MacroItem = {
+  label: string;
+  value: number;
+};
+
+type DailyMealRatioCardProps = {
+  calories?: number | null;
+  carbohydrate?: number | null;
+  protein?: number | null;
+  fat?: number | null;
+  sodium?: number | null;
 };
 
 function levelColor(level: string) {
@@ -65,22 +76,165 @@ function displayText(
   return String(value);
 }
 
-function dataUrlToFile(dataUrl: string, filename = "meal-image.jpg") {
-  const [header, body] = dataUrl.split(",");
-  const mime = header.match(/data:(.*?);base64/)?.[1] ?? "image/jpeg";
-  const binary = atob(body);
-  const array = new Uint8Array(binary.length);
+function displayPercent(value?: number | null) {
+  return value == null ? "-" : `${value}%`;
+}
 
-  for (let i = 0; i < binary.length; i += 1) {
-    array[i] = binary.charCodeAt(i);
-  }
+function MacroDonutChart({ macros }: { macros: MacroItem[] }) {
+  const normalizedMacros = macros.map((macro) => ({
+    ...macro,
+    value: Math.max(0, Math.min(100, macro.value)),
+  }));
+  const total = normalizedMacros.reduce((sum, macro) => sum + macro.value, 0);
+  const isEmpty = total === 0;
+  const safeTotal = total === 0 ? 1 : total;
+  const radius = 64;
+  const strokeWidth = 22;
+  const circumference = 2 * Math.PI * radius;
+  const colors = ["#7EDAA0", "#2E7D5B", "#C6E377"];
 
-  return new File([array], filename, { type: mime });
+  let accumulatedOffset = 0;
+  const chartSegments = normalizedMacros.map((macro, index) => {
+    const dashLength = (macro.value / safeTotal) * circumference;
+    const segment = {
+      ...macro,
+      color: colors[index % colors.length],
+      dashLength,
+      strokeDashoffset: -accumulatedOffset,
+    };
+
+    accumulatedOffset += dashLength;
+    return segment;
+  });
+
+  return (
+    <div className="flex flex-col items-center gap-6 md:flex-row md:items-center md:justify-between">
+      <div className="relative flex h-[180px] w-[180px] items-center justify-center">
+        <svg
+          viewBox="0 0 180 180"
+          className="-rotate-90 h-[180px] w-[180px]"
+          aria-label="탄단지 비율 차트"
+        >
+          <circle
+            cx="90"
+            cy="90"
+            r={radius}
+            fill="none"
+            stroke="rgba(22,49,38,0.08)"
+            strokeWidth={strokeWidth}
+          />
+          {chartSegments.map((segment) => (
+            <circle
+              key={segment.label}
+              cx="90"
+              cy="90"
+              r={radius}
+              fill="none"
+              stroke={segment.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeDasharray={`${segment.dashLength} ${
+                circumference - segment.dashLength
+              }`}
+              strokeDashoffset={segment.strokeDashoffset}
+            />
+          ))}
+        </svg>
+
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <p
+            className={`text-xs ${
+              isEmpty
+                ? "text-[#163126]/50"
+                : "font-semibold tracking-[0.18em] text-[#2E7D5B]"
+            }`}
+          >
+            {isEmpty ? "데이터 없음" : "MACRO"}
+          </p>
+          <p className="mt-2 text-2xl font-bold text-[#163126]">탄단지</p>
+        </div>
+      </div>
+
+      <div className="grid w-full gap-3">
+        {normalizedMacros.map((macro, index) => (
+          <div
+            key={macro.label}
+            className="flex items-center justify-between rounded-[18px] border border-[#163126]/6 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(22,49,38,0.04)]"
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className="h-3.5 w-3.5 rounded-full"
+                style={{ backgroundColor: colors[index % colors.length] }}
+              />
+              <span className="text-sm font-medium text-[#163126]">
+                {macro.label}
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-[#163126]/70">
+              {total === 0 ? "-" : `${macro.value}%`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DailyMealRatioCard({
+  calories,
+  carbohydrate,
+  protein,
+  fat,
+  sodium,
+}: DailyMealRatioCardProps) {
+  const items = [
+    { label: "칼로리", value: calories, color: "#2E7D5B" },
+    { label: "탄수화물", value: carbohydrate, color: "#7EDAA0" },
+    { label: "단백질", value: protein, color: "#63A775" },
+    { label: "지방", value: fat, color: "#B7E36D" },
+    {
+      label: "나트륨",
+      value: sodium,
+      color: sodium != null && sodium >= 50 ? "#E86D6D" : "#C98918",
+    },
+  ];
+
+  return (
+    <div className="rounded-[28px] border border-[#C98918]/15 bg-gradient-to-br from-[#FFFDF8] to-[#FFF8EC] p-5 shadow-[0_18px_40px_rgba(201,137,24,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(201,137,24,0.12)] md:p-6">
+      <div className="mb-5 flex items-center gap-2">
+        <HeartPulse size={18} className="text-[#2E7D5B]" />
+        <p className="text-sm font-semibold text-[#163126]">
+          하루 권장량 대비 한 끼
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {items.map((item) => (
+          <div key={item.label}>
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-[#163126]">{item.label}</span>
+              <span className="font-semibold text-[#163126]/70">
+                {displayPercent(item.value)}
+              </span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-white shadow-inner">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(0, Math.min(100, item.value ?? 0))}%`,
+                  backgroundColor: item.color,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function DietResultScreen({ mode, image, result }: Props) {
   const router = useRouter();
-  const [upgrading, setUpgrading] = useState(false);
 
   const summaryText =
     result.feedback_summary ??
@@ -105,54 +259,26 @@ export default function DietResultScreen({ mode, image, result }: Props) {
   const vitaminLevel = displayText(result.vitamin_info?.level);
   const mineralLevel = displayText(result.mineral_info?.level);
   const sodiumLevel = displayText(result.sodium_level);
+  const hasEstimatedCalories = result.estimated_calories != null;
+  const hasVitaminLevel =
+    result.vitamin_info?.level != null && result.vitamin_info.level !== "";
+  const hasMineralLevel =
+    result.mineral_info?.level != null && result.mineral_info.level !== "";
+  const hasSodiumLevel =
+    result.sodium_level != null &&
+    result.sodium_level !== "" &&
+    result.sodium_level !== "-";
   const calorieText =
     result.estimated_calories != null
       ? `${result.estimated_calories} kcal`
       : "분석 정보 없음";
   const scoreText = result.overall_score != null ? result.overall_score : "-";
-
-  const handleUpgradeToPremium = async () => {
-    try {
-      setUpgrading(true);
-
-      const file = dataUrlToFile(image, "meal-image.jpg");
-      const response: RequestMealAnalysisResponse = await requestMealAnalysis(
-        file,
-        "premium"
-      );
-
-      const responseWithOptionalResult =
-        response as RequestMealAnalysisResponse & {
-          result?: {
-            task_id?: string;
-          };
-        };
-
-      const taskId =
-        responseWithOptionalResult.task_id ??
-        responseWithOptionalResult.result?.task_id;
-
-      if (!taskId) {
-        console.error("프리미엄 식단 분석 응답:", response);
-        throw new Error("프리미엄 식단 분석 task_id를 찾을 수 없어요.");
-      }
-
-      sessionStorage.setItem(
-        "diet-analysis-pending",
-        JSON.stringify({
-          taskId,
-          mode: "premium",
-          image,
-        })
-      );
-
-      router.push("/diet-analysis/analyzing");
-    } catch (error) {
-      console.error("프리미엄 식단 분석 재요청 실패:", error);
-      alert("프리미엄 식단 분석 요청에 실패했어요.");
-    } finally {
-      setUpgrading(false);
-    }
+  const dailyMealRatio = {
+    calories: null,
+    carbohydrate: null,
+    protein: null,
+    fat: null,
+    sodium: null,
   };
 
   return (
@@ -227,16 +353,29 @@ export default function DietResultScreen({ mode, image, result }: Props) {
             </h2>
 
             <div className="mt-6 flex items-center gap-4">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#ecf9f1] text-center">
-                <div>
-                  <p className="text-3xl font-bold text-[#2E7D5B]">
-                    {scoreText}
-                  </p>
-                  <p className="text-xs font-semibold text-[#163126]/55">
-                    / 10점
-                  </p>
+              {mode === "premium" ? (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#ecf9f1] text-center">
+                  <div>
+                    <p className="text-3xl font-bold text-[#2E7D5B]">
+                      {scoreText}
+                    </p>
+                    <p className="text-xs font-semibold text-[#163126]/55">
+                      / 10점
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex h-24 min-w-[96px] items-center justify-center rounded-[24px] border border-[#2E7D5B]/10 bg-[#ecf9f1] px-4 text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-[#2E7D5B]">
+                      무료 분석
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-[#163126]/55">
+                      요약 제공
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex-1 rounded-[22px] bg-white px-4 py-4">
                 <p className="text-sm leading-7 text-[#163126]/68">
@@ -246,112 +385,71 @@ export default function DietResultScreen({ mode, image, result }: Props) {
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <StatCard title="예상 칼로리" value={calorieText} />
-              <StatCard
-                title="나트륨 수준"
-                value={sodiumLevel}
-                pill
-                pillClassName={levelColor(sodiumLevel)}
-              />
-              <StatCard
-                title="비타민"
-                value={vitaminLevel}
-                pill
-                pillClassName={levelColor(vitaminLevel)}
-              />
-              <StatCard
-                title="무기질"
-                value={mineralLevel}
-                pill
-                pillClassName={levelColor(mineralLevel)}
-              />
+              {(mode === "premium" || hasEstimatedCalories) && (
+                <StatCard title="예상 칼로리" value={calorieText} />
+              )}
+              {(mode === "premium" || hasSodiumLevel) && (
+                <StatCard
+                  title="나트륨 수준"
+                  value={sodiumLevel}
+                  pill
+                  pillClassName={levelColor(sodiumLevel)}
+                />
+              )}
+              {(mode === "premium" || hasVitaminLevel) && (
+                <StatCard
+                  title="비타민"
+                  value={vitaminLevel}
+                  pill
+                  pillClassName={levelColor(vitaminLevel)}
+                />
+              )}
+              {(mode === "premium" || hasMineralLevel) && (
+                <StatCard
+                  title="무기질"
+                  value={mineralLevel}
+                  pill
+                  pillClassName={levelColor(mineralLevel)}
+                />
+              )}
             </div>
           </motion.div>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div
+          className={`mt-6 grid gap-6 ${
+            mode === "premium" ? "xl:grid-cols-[1fr_1fr]" : "xl:grid-cols-1"
+          }`}
+        >
           <motion.div
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.08 }}
-            className="rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6"
+            className="rounded-[28px] border border-[#2E7D5B]/10 bg-[#F6FBF8] p-5 shadow-[0_18px_40px_rgba(46,125,91,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(46,125,91,0.12)] md:p-6"
           >
             <div className="mb-5 flex items-center gap-2">
               <HeartPulse size={18} className="text-[#2E7D5B]" />
-              <p className="text-sm font-semibold text-[#163126]">핵심 영양 수치</p>
+              <p className="text-sm font-semibold text-[#163126]">탄단지 비율</p>
             </div>
 
-            <div className="space-y-5">
-              {macros.map((macro) => (
-                <div key={macro.label}>
-                  <div className="mb-2 flex items-center justify-between text-sm">
-                    <span className="font-medium text-[#163126]">
-                      {macro.label}
-                    </span>
-                    <span className="text-[#163126]/60">{macro.value}%</span>
-                  </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-[#163126]/8">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#8ce7a7,#b7f3c9)]"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, macro.value))}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <MacroDonutChart macros={macros} />
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
-            className="rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6"
-          >
-            <p className="text-sm font-semibold text-[#163126]">핵심 코멘트</p>
-            <div className="mt-4 rounded-[22px] bg-white px-4 py-4 text-sm leading-7 text-[#163126]/68">
-              {summaryText}
-            </div>
-
-            {mode === "free" && (
-              <div className="mt-5 rounded-[24px] border border-dashed border-[#163126]/12 bg-white px-4 py-5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff6e8]">
-                    <Coins size={18} className="text-[#c67800]" />
-                  </div>
-
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-[#163126]">
-                      더 자세한 분석이 필요하신가요?
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#163126]/62">
-                      같은 사진으로 바로 이어서 프리미엄 분석을 진행할 수 있어요.
-                      추천 음식, 상세 피드백, 다음 끼니 제안까지 확인해보세요.
-                    </p>
-
-                    <button
-                      onClick={handleUpgradeToPremium}
-                      disabled={upgrading}
-                      className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#163126] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {upgrading ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          프리미엄 분석 준비 중...
-                        </>
-                      ) : (
-                        <>
-                          <Coins size={16} />
-                          300P로 자세히 분석하기
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </motion.div>
+          {mode === "premium" && (
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.12 }}
+            >
+              <DailyMealRatioCard
+                calories={dailyMealRatio.calories}
+                carbohydrate={dailyMealRatio.carbohydrate}
+                protein={dailyMealRatio.protein}
+                fat={dailyMealRatio.fat}
+                sodium={dailyMealRatio.sodium}
+              />
+            </motion.div>
+          )}
         </div>
 
         {mode === "premium" && (
@@ -382,7 +480,7 @@ export default function DietResultScreen({ mode, image, result }: Props) {
               transition={{ delay: 0.2 }}
               className="grid gap-6 xl:grid-cols-[1fr_1fr]"
             >
-              <div className="rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6">
+              <div className="rounded-[28px] border border-[#2E7D5B]/10 bg-[#F8FCFF] p-5 shadow-[0_14px_36px_rgba(46,125,91,0.06)] md:p-6">
                 <div className="mb-4 flex items-center gap-2">
                   <Leaf size={18} className="text-[#2E7D5B]" />
                   <p className="text-sm font-semibold text-[#163126]">추천 음식</p>
@@ -421,7 +519,7 @@ export default function DietResultScreen({ mode, image, result }: Props) {
                 )}
               </div>
 
-              <div className="rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6">
+              <div className="rounded-[28px] border border-[#2E7D5B]/10 bg-[#F6FBF8] p-5 shadow-[0_14px_36px_rgba(46,125,91,0.06)] md:p-6">
                 <div className="mb-4 flex items-center gap-2">
                   <ArrowRight size={18} className="text-[#2E7D5B]" />
                   <p className="text-sm font-semibold text-[#163126]">다음 끼니 제안</p>
@@ -462,7 +560,7 @@ export default function DietResultScreen({ mode, image, result }: Props) {
         <div className="mt-8 flex flex-wrap gap-3">
           <button
             onClick={() => router.push("/diet-analysis")}
-            className="rounded-full border border-[#163126]/10 bg-white px-5 py-3 text-sm font-semibold text-[#163126]"
+            className="rounded-full border border-[#163126]/10 bg-white px-5 py-3 text-sm font-semibold text-[#163126] transition hover:bg-[#f7faf8]"
           >
             다시 분석하기
           </button>
@@ -514,7 +612,7 @@ function DetailCard({
   content: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6">
+    <div className="rounded-[28px] border border-[#163126]/8 bg-white/80 p-5 shadow-[0_14px_36px_rgba(22,49,38,0.05)] md:p-6">
       <div className="mb-4 flex items-center gap-2">
         {icon}
         <p className="text-sm font-semibold text-[#163126]">{title}</p>
