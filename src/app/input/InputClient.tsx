@@ -152,6 +152,13 @@ function toDisplayNumber(value?: number | string | null) {
   return String(value);
 }
 
+function toRoundedNumber(value?: number | string | null) {
+  if (value == null) return "";
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(num)) return "";
+  return String(Math.round(num));
+}
+
 function extractHealthRecords(raw: unknown): HealthRecordResponse[] {
   const data = raw as
     | HealthRecordResponse[]
@@ -231,14 +238,10 @@ export default function InputClient() {
                 gender: toDisplayGender(parsed.gender) || prev.gender,
                 height: toDisplayNumber(parsed.height) || prev.height,
                 weight: toDisplayNumber(parsed.weight) || prev.weight,
-                systolic: toDisplayNumber(parsed.systolic_bp) || prev.systolic,
-                diastolic:
-                  toDisplayNumber(parsed.diastolic_bp) || prev.diastolic,
-                fastingGlucose:
-                  toDisplayNumber(parsed.glucose) || prev.fastingGlucose,
-                totalCholesterol:
-                  toDisplayNumber(parsed.total_cholesterol) ||
-                  prev.totalCholesterol,
+                systolic: toRoundedNumber(parsed.systolic_bp) || prev.systolic,
+                diastolic: toRoundedNumber(parsed.diastolic_bp) || prev.diastolic,
+                fastingGlucose: toRoundedNumber(parsed.glucose) || prev.fastingGlucose,
+                totalCholesterol: toRoundedNumber(parsed.total_cholesterol) || prev.totalCholesterol,
               }));
               setOcrPrefilled(true);
             }
