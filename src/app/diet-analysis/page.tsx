@@ -77,6 +77,7 @@ export default function DietAnalysisPage() {
   const [cardsReadyPulse, setCardsReadyPulse] = useState(false);
 
   const [uploadHint, setUploadHint] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [hintType, setHintType] = useState<"success" | "error" | "info">(
     "info"
   );
@@ -128,16 +129,21 @@ export default function DietAnalysisPage() {
 
   const applyFile = async (file: File) => {
     if (!isSupportedImage(file)) {
-      triggerDropError("JPEG, PNG, WebP, GIF 파일만 업로드할 수 있어요.");
+      setErrorMessage(
+        "지원하지 않는 이미지 형식이에요. JPEG, PNG, WebP, GIF 이미지를 업로드해주세요."
+      );
+      triggerDropError("지원하지 않는 이미지 형식이에요.");
       return;
     }
 
     if (!isValidImageSize(file)) {
-      triggerDropError("이미지 용량은 20MB 이하만 업로드할 수 있어요.");
+      setErrorMessage("이미지 크기는 최대 20MB까지 업로드할 수 있어요.");
+      triggerDropError("이미지 크기는 최대 20MB까지 업로드할 수 있어요.");
       return;
     }
 
     try {
+      setErrorMessage("");
       const dataUrl = await readFileAsDataUrl(file);
       setSelectedFile(file);
       setPreviewUrl(dataUrl);
@@ -350,7 +356,11 @@ export default function DietAnalysisPage() {
                   duration: dropErrorActive ? 0.42 : 0.18,
                   ease: "easeOut",
                 }}
-                className="relative rounded-[24px] border border-dashed p-6 outline-none"
+                className={`relative rounded-[24px] border border-dashed p-6 outline-none transition-all duration-300 ${
+                  errorMessage
+                    ? "border-[#E86D6D] bg-[#FFF7F7] shadow-[0_18px_40px_rgba(232,109,109,0.12)]"
+                    : ""
+                }`}
               >
                 <AnimatePresence>
                   {isDragActive && !dropErrorActive ? (
@@ -444,9 +454,9 @@ export default function DietAnalysisPage() {
                         <button
                           type="button"
                           onClick={handleOpenFilePicker}
-                          className="inline-flex items-center gap-2 rounded-full bg-[#163126] px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(22,49,38,0.12)] transition hover:translate-y-[-1px] hover:opacity-95"
+                          className="inline-flex min-w-[190px] items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#163126] px-8 py-4 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(22,49,38,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#1d4232] hover:shadow-lg active:scale-95"
                         >
-                          <UploadCloud size={16} />
+                          <UploadCloud size={16} className="shrink-0" />
                           사진 업로드하기
                         </button>
 
@@ -470,6 +480,12 @@ export default function DietAnalysisPage() {
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
+
+                {errorMessage && (
+                  <p className="mt-4 text-sm font-semibold text-[#D94F4F]">
+                    {errorMessage}
+                  </p>
+                )}
               </motion.div>
             </motion.div>
 
@@ -493,7 +509,7 @@ export default function DietAnalysisPage() {
                 whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
                 whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
                 transition={{ duration: 0.55 }}
-                className="block w-full rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-6 text-left transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="block w-full rounded-[28px] border border-[#163126]/8 bg-white/70 p-6 text-left transition-all duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-[0_18px_40px_rgba(46,125,91,0.12)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
                   {loadingMode === "free" ? (
@@ -534,7 +550,7 @@ export default function DietAnalysisPage() {
                 whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
                 whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
                 transition={{ duration: 0.55, delay: 0.05 }}
-                className="block w-full rounded-[28px] border border-[#163126]/8 bg-[#f9fcfa] p-6 text-left transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="block w-full rounded-[28px] border border-[#163126]/8 bg-white/70 p-6 text-left transition-all duration-300 hover:-translate-y-1 hover:bg-[#FFFDF8] hover:shadow-[0_18px_40px_rgba(201,137,24,0.12)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#fff6e8] text-[#c67800]">
                   {loadingMode === "premium" ? (
