@@ -117,8 +117,11 @@ const RANGE = {
   totalCholesterol: { min: 80, max: 500 },
 };
 
-const isValidTwoToFourDigits = (value: string) =>
-  /^\d{2,4}$/.test(value.trim());
+const isValidNumberInput = (value: string) =>
+  /^\d{1,4}(\.\d)?$/.test(value.trim());
+
+const isIncompleteDecimalInput = (value: string) =>
+  /^\d{1,4}\.$/.test(value.trim());
 
 function parseNumber(value: string) {
   const trimmed = value.trim();
@@ -199,6 +202,8 @@ export default function InputClient() {
   const isNewMode = mode === "new";
   const isFirstMode = mode === "first";
   const isOcrMode = mode === "ocr";
+  const showUploadButton =
+    !isOcrMode && (isNewMode || isEditMode || isFirstMode);
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -424,24 +429,35 @@ export default function InputClient() {
 
     if (!form.height.trim()) {
       nextErrors.height = "신장을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.height)) {
-      nextErrors.height = "신장은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.height)) {
+      nextErrors.height =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.height)) {
+      nextErrors.height = "신장은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (!isInRange(form.height, RANGE.height.min, RANGE.height.max)) {
       nextErrors.height = `신장은 ${RANGE.height.min}cm부터 ${RANGE.height.max}cm 사이로 입력해주세요.`;
     }
 
     if (!form.weight.trim()) {
       nextErrors.weight = "체중을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.weight)) {
-      nextErrors.weight = "체중은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.weight)) {
+      nextErrors.weight =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.weight)) {
+      nextErrors.weight =
+        "체중은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (!isInRange(form.weight, RANGE.weight.min, RANGE.weight.max)) {
       nextErrors.weight = `체중은 ${RANGE.weight.min}kg부터 ${RANGE.weight.max}kg 사이로 입력해주세요.`;
     }
 
     if (!form.systolic.trim()) {
       nextErrors.systolic = "수축기 혈압을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.systolic)) {
-      nextErrors.systolic = "수축기 혈압은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.systolic)) {
+      nextErrors.systolic =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.systolic)) {
+      nextErrors.systolic =
+        "수축기 혈압은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (
       !isInRange(form.systolic, RANGE.systolic.min, RANGE.systolic.max)
     ) {
@@ -450,8 +466,12 @@ export default function InputClient() {
 
     if (!form.diastolic.trim()) {
       nextErrors.diastolic = "이완기 혈압을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.diastolic)) {
-      nextErrors.diastolic = "이완기 혈압은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.diastolic)) {
+      nextErrors.diastolic =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.diastolic)) {
+      nextErrors.diastolic =
+        "이완기 혈압은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (
       !isInRange(form.diastolic, RANGE.diastolic.min, RANGE.diastolic.max)
     ) {
@@ -460,8 +480,12 @@ export default function InputClient() {
 
     if (!form.fastingGlucose.trim()) {
       nextErrors.fastingGlucose = "공복 혈당을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.fastingGlucose)) {
-      nextErrors.fastingGlucose = "공복 혈당은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.fastingGlucose)) {
+      nextErrors.fastingGlucose =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.fastingGlucose)) {
+      nextErrors.fastingGlucose =
+        "공복 혈당은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (
       !isInRange(
         form.fastingGlucose,
@@ -474,8 +498,12 @@ export default function InputClient() {
 
     if (!form.totalCholesterol.trim()) {
       nextErrors.totalCholesterol = "총 콜레스테롤을 입력해주세요.";
-    } else if (!isValidTwoToFourDigits(form.totalCholesterol)) {
-      nextErrors.totalCholesterol = "총 콜레스테롤은 숫자로 입력해주세요.";
+    } else if (isIncompleteDecimalInput(form.totalCholesterol)) {
+      nextErrors.totalCholesterol =
+        "정수로 입력하거나 소수점 아래 첫째 자리까지 입력해주세요.";
+    } else if (!isValidNumberInput(form.totalCholesterol)) {
+      nextErrors.totalCholesterol =
+        "총 콜레스테롤은 소수점 첫째 자리까지 숫자로 입력해주세요.";
     } else if (
       !isInRange(
         form.totalCholesterol,
@@ -539,13 +567,7 @@ export default function InputClient() {
     (step === 2 && isHabitValid) ||
     step === 3;
 
-  const submitLabel = submitting
-    ? isEditMode || isOcrMode
-      ? "다시 분석 요청 중..."
-      : "분석 요청 중..."
-    : isEditMode || isOcrMode
-    ? "다시 분석하기"
-    : "건강 분석하기";
+  const submitLabel = submitting ? "분석 요청 중..." : "분석하기";
 
   const updateField = <K extends keyof FormState>(
     key: K,
@@ -597,7 +619,14 @@ export default function InputClient() {
   const handlePrev = () => {
     if (step > 0) {
       setStep((prev) => prev - 1);
+      return;
     }
+
+    router.push(
+      isEditMode || isOcrMode
+        ? "/health/start?mode=reanalyze"
+        : "/health/start?mode=first"
+    );
   };
 
   const buildCommonPayload = () => {
@@ -921,35 +950,21 @@ export default function InputClient() {
                       title="기본 정보 입력"
                       desc={
                         ocrPrefilled
-                          ? "건강검진표에서 읽은 값을 바탕으로 일부 항목이 자동으로 채워졌어요. 맞는지 확인하고 수정해주세요."
+                          ? (
+                              <>
+                                건강검진표에서 읽은 값을 바탕으로 일부 항목이 자동으로
+                                채워졌어요.
+                                <br />
+                                맞는지 확인하고 수정해주세요.
+                              </>
+                            )
                           : "최근 건강검진 수치와 생활습관 정보를 입력하면 결과를 분석해드려요."
                       }
+                      badge={ocrPrefilled ? "검진표 기반 자동 입력됨" : undefined}
                     />
 
-                    <div className="mb-5 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(
-                            `/health/upload-checkup?mode=${
-                              isEditMode ? "reanalyze" : "first"
-                            }`
-                          )
-                        }
-                        className="rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-sm font-semibold text-[#163126] transition hover:bg-[#f7faf8]"
-                      >
-                        건강검진표 업로드로 자동 입력
-                      </button>
-
-                      {ocrPrefilled ? (
-                        <span className="inline-flex items-center rounded-full bg-[#EAF6EC] px-4 py-2 text-sm font-semibold text-[#2E7D5B]">
-                          검진표 기반 자동 입력됨
-                        </span>
-                      ) : null}
-                    </div>
-
                     <p className="mb-5 text-xs leading-6 text-[#163126]/45 md:text-sm">
-                      키와 몸무게는 소수점 없이 입력해주세요. 소수점 값은 반올림해서 입력하면 돼요.
+                      키, 몸무게와 건강검진 수치는 소수점 첫째 자리까지 입력할 수 있어요.
                     </p>
 
                     <div className="grid gap-5 md:grid-cols-2">
@@ -984,7 +999,7 @@ export default function InputClient() {
                         onBlur={() =>
                           setTouched((prev) => ({ ...prev, birthYear: true }))
                         }
-                        type="number"
+                        type="text"
                         error={visibleError("birthYear")}
                       />
 
@@ -1021,6 +1036,7 @@ export default function InputClient() {
                       eyebrow="health metrics"
                       title="건강검진 수치 입력"
                       desc="복잡한 항목은 빼고, 핵심 수치만 먼저 입력해볼게요."
+                      badge={ocrPrefilled ? "검진표 기반 자동 입력됨" : undefined}
                     />
 
                     <div className="grid gap-5 md:grid-cols-2">
@@ -1101,9 +1117,10 @@ export default function InputClient() {
                         detailValue={form.smokingDetail}
                         detailPlaceholder="흡연 빈도 선택"
                         detailOptions={[
-                          "하루 3개비 이하",
-                          "하루 4-10개비",
-                          "하루 10개비 이상",
+                          "하루 1~5개비",
+                          "하루 6~10개비",
+                          "하루 11~20개비",
+                          "하루 20개비 이상",
                         ]}
                         onDetailChange={(v) => {
                           updateField("smokingDetail", v);
@@ -1126,7 +1143,7 @@ export default function InputClient() {
                         }}
                         detailValue={form.drinkingDetail}
                         detailPlaceholder="음주 빈도 선택"
-                        detailOptions={["주 1회", "주 2~3회", "주 4회 이상"]}
+                        detailOptions={["가끔", "주 1회", "주 2~3회", "주 4회 이상"]}
                         onDetailChange={(v) => {
                           updateField("drinkingDetail", v);
                           setTouched((prev) => ({
@@ -1224,19 +1241,36 @@ export default function InputClient() {
               </section>
 
               <div className="mx-auto mt-8 flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  onClick={handlePrev}
-                  disabled={step === 0 || prefilling}
-                  className="w-full rounded-full border border-[#163126]/10 bg-white/72 px-6 py-3 text-sm font-semibold text-[#163126] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto"
-                >
-                  이전
-                </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <button
+                    onClick={handlePrev}
+                    disabled={prefilling}
+                    className="rounded-full border border-[#163126]/10 bg-white px-6 py-3 text-sm font-semibold"
+                  >
+                    이전
+                  </button>
+
+                  {showUploadButton && (
+                    <button
+                      onClick={() =>
+                        router.push(
+                          `/health/upload-checkup?mode=${
+                            isEditMode ? "reanalyze" : "first"
+                          }`
+                        )
+                      }
+                      className="rounded-full border border-[#163126]/10 bg-white px-6 py-3 text-sm font-semibold text-[#2E7D5B]"
+                    >
+                      업로드로 자동 입력하기
+                    </button>
+                  )}
+                </div>
 
                 {step < totalSteps - 1 ? (
                   <button
                     onClick={handleNext}
                     disabled={!canGoNext || prefilling}
-                    className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
+                    className="rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#D8E2DC] disabled:text-[#8FA099] disabled:hover:bg-[#D8E2DC]"
                   >
                     다음
                   </button>
@@ -1244,7 +1278,7 @@ export default function InputClient() {
                   <button
                     onClick={handleAnalyze}
                     disabled={!isAllValid || submitting || prefilling}
-                    className="w-full rounded-full bg-[#163126] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25 sm:w-auto"
+                    className="rounded-full bg-[#163126] px-7 py-3 text-white"
                   >
                     {submitLabel}
                   </button>
@@ -1262,10 +1296,12 @@ function StepHeader({
   eyebrow,
   title,
   desc,
+  badge,
 }: {
   eyebrow: string;
   title: string;
-  desc: string;
+  desc: React.ReactNode;
+  badge?: string;
 }) {
   return (
     <div className="mb-9 text-center">
@@ -1278,6 +1314,14 @@ function StepHeader({
       <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-[#163126]/68 md:text-base md:leading-7">
         {desc}
       </p>
+
+      {badge ? (
+        <div className="mt-5 flex justify-center">
+          <span className="rounded-full bg-[#EAF6EC] px-4 py-2 text-sm font-semibold text-[#2E7D5B]">
+            {badge}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1307,31 +1351,31 @@ function InputField({
         {label}
       </span>
       <input
-        type={isNumberField ? "text" : type}
-        inputMode={isNumberField ? "numeric" : undefined}
+        type="text"
+        inputMode={isNumberField ? "decimal" : undefined}
         value={value}
         onBlur={onBlur}
         onChange={(e) => {
+          const nextValue = e.target.value;
+
           if (isNumberField) {
-            const onlyNumber = e.target.value.replace(/\D/g, "");
-            if (onlyNumber.length <= 4) {
-              onChange(onlyNumber);
+            // 소수점 1자리까지 허용
+            if (/^\d{0,4}(\.\d{0,1})?$/.test(nextValue)) {
+              onChange(nextValue);
             }
             return;
           }
 
-          onChange(e.target.value);
+          onChange(nextValue);
         }}
         placeholder={placeholder}
-        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 sm:h-[52px] md:h-14 md:px-5 ${
+        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 ${
           error
-            ? "border-[#e58b8b] focus:border-[#d8614d]"
+            ? "border-[#e58b8b]"
             : "border-white/40 focus:border-[#7EE8A7]"
         }`}
       />
-      {error ? (
-        <p className="mt-2 text-xs leading-5 text-[#d8614d]">{error}</p>
-      ) : null}
+      {error && <p className="mt-2 text-xs text-[#d8614d]">{error}</p>}
     </label>
   );
 }
