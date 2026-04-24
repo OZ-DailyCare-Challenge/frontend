@@ -6,8 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Camera,
   Clipboard,
-  FileImage,
-  Loader2,
   RefreshCcw,
   Upload,
   X,
@@ -38,7 +36,9 @@ export default function UploadCheckupClient() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [hasUploaded, setHasUploaded] = useState(false);
 
   const buddyImageSrc = "/images/buddy-camera.png";
 
@@ -105,13 +105,16 @@ export default function UploadCheckupClient() {
 
     if (validationError) {
       setError(validationError);
+      setErrorMessage("");
       setStatusMessage("");
       return;
     }
 
     setError("");
+    setErrorMessage("");
     setStatusMessage("");
     setSelectedFile(file);
+    setHasUploaded(true);
 
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -156,7 +159,9 @@ export default function UploadCheckupClient() {
     setSelectedFile(null);
     setPreviewUrl("");
     setError("");
+    setErrorMessage("");
     setStatusMessage("");
+    setHasUploaded(false);
 
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -169,6 +174,7 @@ export default function UploadCheckupClient() {
     try {
       setLoading(true);
       setError("");
+      setErrorMessage("");
       setStatusMessage("건강검진표를 분석하고 있어요...");
 
       const data = await requestCheckupOcr(selectedFile);
@@ -189,13 +195,10 @@ export default function UploadCheckupClient() {
       window.setTimeout(() => {
         router.push("/input?mode=ocr");
       }, 500);
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "건강검진표 분석 중 문제가 발생했어요.";
-
-      setError(message);
+    } catch (_err) {
+      setErrorMessage(
+        "이미지를 업로드할 수 없어요. 지원 형식을 확인해주세요."
+      );
       setStatusMessage("");
     } finally {
       setLoading(false);
@@ -232,23 +235,23 @@ export default function UploadCheckupClient() {
                   <p className="text-sm font-medium text-[#2E7D5B]">
                     buddy guide
                   </p>
+
                   <p className="mt-2 text-[17px] font-bold leading-[1.45] text-[#163126] whitespace-normal break-keep">
-                    {pageText.guideTitle}
+                    Buddy가 이미지를 분석하고 입력값을 채워드려요
                   </p>
+
                   <p className="mt-3 text-sm leading-7 text-[#163126]/68 whitespace-normal break-keep">
-                    {pageText.guideDesc}
+                    혈압, 혈당, 콜레스테롤, 키, 체중 같은 주요 정보를 자동으로 읽어와서 입력을 더 빠르게 할 수 있어요.
                   </p>
+
                   <div className="absolute right-[-8px] top-8 h-4 w-4 rotate-45 border-r border-t border-white/40 bg-white/72" />
                 </div>
 
-                <div className="flex h-[190px] w-[190px] shrink-0 items-end justify-center">
-                  <Image
-                    src={buddyImageSrc}
-                    alt="카메라를 들고 검진표 업로드를 안내하는 버디"
-                    width={180}
-                    height={180}
-                    className="h-[180px] w-[180px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
-                    priority
+                <div className="flex h-[236px] w-[236px] shrink-0 items-end justify-center">
+                  <img
+                    src="/images/buddy-camera.png"
+                    alt="검진표 업로드를 안내하는 버디"
+                    className="h-[226px] w-[226px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
                   />
                 </div>
               </div>
@@ -303,10 +306,12 @@ export default function UploadCheckupClient() {
                       onDrop={handleDrop}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
-                      className={`relative rounded-[24px] border border-dashed p-6 text-center transition md:p-8 ${
-                        dragActive
+                      className={`relative rounded-3xl border-2 p-6 text-center transition md:p-8 ${
+                        errorMessage
+                          ? "border-red-400 bg-red-50"
+                          : dragActive
                           ? "border-[#6DBA7B] bg-[#F2FBF4]"
-                          : "border-[#6DBA7B]/40 bg-[#F8FCF9]"
+                          : "border-[#E5EFE8] bg-[#F8FCF9]"
                       }`}
                     >
                       <input
@@ -344,9 +349,9 @@ export default function UploadCheckupClient() {
                             <button
                               type="button"
                               onClick={handleChooseFile}
-                              className="inline-flex items-center gap-2 rounded-full bg-[#163126] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232]"
+                              className="inline-flex min-w-[190px] items-center justify-center gap-2 rounded-full bg-[#163126] px-8 py-4 text-sm font-semibold text-white whitespace-nowrap transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#1d4232] hover:shadow-lg active:scale-95"
                             >
-                              <Upload size={16} />
+                              <Upload size={16} className="shrink-0" />
                               사진 업로드하기
                             </button>
 
@@ -400,25 +405,6 @@ export default function UploadCheckupClient() {
                           <div className="mt-5 flex flex-wrap gap-3">
                             <button
                               type="button"
-                              onClick={handleUpload}
-                              disabled={loading}
-                              className="inline-flex items-center gap-2 rounded-full bg-[#163126] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/35"
-                            >
-                              {loading ? (
-                                <>
-                                  <Loader2 size={16} className="animate-spin" />
-                                  분석 중...
-                                </>
-                              ) : (
-                                <>
-                                  <FileImage size={16} />
-                                  OCR로 수치 추출
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
                               onClick={handleChooseFile}
                               disabled={loading}
                               className="inline-flex items-center gap-2 rounded-full border border-[#163126]/10 bg-white px-5 py-3 text-sm font-semibold text-[#163126] transition hover:bg-[#f7faf8] disabled:cursor-not-allowed disabled:opacity-50"
@@ -437,15 +423,32 @@ export default function UploadCheckupClient() {
                       </p>
                     ) : null}
 
+                    {errorMessage && (
+                      <p className="mt-3 text-sm text-red-500">
+                        {errorMessage}
+                      </p>
+                    )}
+
                     {statusMessage ? (
                       <p className="mt-4 text-sm font-medium text-[#2E7D5B]">
                         {statusMessage}
                       </p>
                     ) : null}
+
+                    {selectedFile ? (
+                      <button
+                        type="button"
+                        onClick={handleUpload}
+                        disabled={loading}
+                        className="mt-6 w-full rounded-2xl bg-[#163126] py-4 text-lg font-bold text-white shadow-md transition hover:bg-[#1d4232] hover:shadow-lg hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#163126]/35 disabled:hover:translate-y-0 disabled:hover:shadow-md"
+                      >
+                        {loading ? "분석 중..." : "OCR로 수치 추출"}
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="grid gap-4">
-                    <div className="rounded-[24px] border border-[#163126]/8 bg-white/70 p-5">
+                    <div className="rounded-[24px] border border-[#163126]/8 bg-white/70 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(46,125,91,0.12)]">
                       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E8F5EA] text-[#2E7D5B]">
                         <Camera size={20} />
                       </div>
@@ -461,7 +464,13 @@ export default function UploadCheckupClient() {
                       </span>
                     </div>
 
-                    <div className="rounded-[24px] border border-[#163126]/8 bg-white/70 p-5">
+                    <div
+                      className={`rounded-[24px] border border-[#163126]/8 bg-white/70 p-5 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(46,125,91,0.12)] ${
+                        hasUploaded
+                          ? "ring-2 ring-[#FFD89C] shadow-lg animate-pulse"
+                          : ""
+                      }`}
+                    >
                       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFF4E6] text-[#C98918]">
                         <Upload size={20} />
                       </div>
@@ -479,30 +488,31 @@ export default function UploadCheckupClient() {
                   </div>
                 </div>
 
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        isReanalyze
-                          ? "/health/start?mode=reanalyze"
-                          : "/health/start?mode=first"
-                      )
-                    }
-                    className="rounded-full border border-[#163126]/10 px-5 py-3 text-sm font-semibold text-[#163126] transition hover:bg-white"
-                  >
-                    이전으로
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleGoInputDirectly}
-                    className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232]"
-                  >
-                    입력 화면으로 이동
-                  </button>
-                </div>
               </section>
+
+              <div className="mx-auto mt-8 flex w-full max-w-4xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      isReanalyze
+                        ? "/health/start?mode=reanalyze"
+                        : "/health/start?mode=first"
+                    )
+                  }
+                  className="rounded-full border border-[#163126]/10 bg-white px-8 py-4 text-sm font-semibold text-[#163126] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_12px_28px_rgba(22,49,38,0.08)]"
+                >
+                  이전
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGoInputDirectly}
+                  className="rounded-full border border-[#163126]/10 bg-white px-8 py-4 text-sm font-semibold text-[#2E7D5B] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_12px_28px_rgba(22,49,38,0.08)]"
+                >
+                  직접 입력하기
+                </button>
+              </div>
             </div>
           </div>
         </div>
