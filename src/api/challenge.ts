@@ -11,6 +11,16 @@ export type Challenge = {
   target_risk_factors: string;
   duration_days: number;
   required_success_days: number;
+  user_challenge?: {
+    id: number;
+    user_id?: number;
+    challenge_id?: number;
+    status: string;
+    current_streak?: number;
+    start_date?: string;
+    completed_at?: string | null;
+    logs?: Array<boolean | null>;
+  } | null;
 };
 
 export type ChallengesResponse = {
