@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import {
   searchUsers,
@@ -23,6 +23,9 @@ export default function SocialContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [pendingRequestIds, setPendingRequestIds] = useState<Set<number>>(
+    new Set()
+  );
 
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -36,6 +39,33 @@ export default function SocialContent() {
     if (activeTab === "requests") loadFriendRequests();
     if (activeTab === "friends") loadFriends();
   }, [activeTab]);
+
+  useEffect(() => {
+    loadFriends();
+    loadFriendRequests();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      try {
+        const data = await getFriendRequests();
+
+        setFriendRequests((prev) => {
+          if (data.length > prev.length) {
+            showMessage("새로운 친구 요청이 도착했어요 💌");
+          }
+
+          return data;
+        });
+
+        setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
+      } catch {
+        // polling 실패는 화면에 노출하지 않음
+      }
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   const showMessage = (msg: string) => {
     setMessage(msg);
@@ -58,9 +88,16 @@ export default function SocialContent() {
   const handleSendRequest = async (userId: number) => {
     try {
       await sendFriendRequest(userId);
+
+      setPendingRequestIds((prev) => {
+        const next = new Set(prev);
+        next.add(userId);
+        return next;
+      });
+
       showMessage("친구 요청을 보냈어요.");
     } catch {
-      showMessage("친구 요청에 실패했어요.");
+      showMessage("이미 친구이거나 진행 중인 요청이 있어요.");
     }
   };
 
@@ -69,6 +106,7 @@ export default function SocialContent() {
       setRequestsLoading(true);
       const data = await getFriendRequests();
       setFriendRequests(data);
+      setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
     } catch {
       showMessage("친구 요청 목록을 불러오지 못했어요.");
     } finally {
@@ -80,7 +118,8 @@ export default function SocialContent() {
     try {
       await acceptFriendRequest(requestId);
       showMessage("친구 요청을 수락했어요.");
-      loadFriendRequests();
+      await loadFriendRequests();
+      await loadFriends();
     } catch {
       showMessage("수락에 실패했어요.");
     }
@@ -90,7 +129,7 @@ export default function SocialContent() {
     try {
       await rejectFriendRequest(requestId);
       showMessage("친구 요청을 거절했어요.");
-      loadFriendRequests();
+      await loadFriendRequests();
     } catch {
       showMessage("거절에 실패했어요.");
     }
@@ -113,15 +152,37 @@ export default function SocialContent() {
     try {
       await deleteFriend(friendId);
       showMessage("친구를 삭제했어요.");
-      loadFriends();
+      await loadFriends();
     } catch {
       showMessage("친구 삭제에 실패했어요.");
     }
   };
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "friends", label: "친구 목록" },
-    { key: "requests", label: "받은 요청" },
+  const tabs: { key: Tab; label: ReactNode }[] = [
+    {
+      key: "friends",
+      label: (
+        <span className="flex items-center gap-1">
+          친구 목록
+          {friends.length > 0 && (
+            <span className="text-xs opacity-70">{friends.length}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "requests",
+      label: (
+        <span className="flex items-center gap-1">
+          받은 요청
+          {friendRequests.length > 0 && (
+            <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+              {friendRequests.length}
+            </span>
+          )}
+        </span>
+      ),
+    },
     { key: "search", label: "친구 찾기" },
   ];
 
@@ -201,12 +262,22 @@ export default function SocialContent() {
                   </div>
                   <span className="text-sm font-medium text-[#163126]">{user.nickname}</span>
                 </div>
-                <button
-                  onClick={() => handleSendRequest(user.id)}
-                  className="rounded-full bg-[#2E7D5B]/10 px-3 py-1.5 text-xs font-medium text-[#2E7D5B] transition hover:bg-[#2E7D5B]/20"
-                >
-                  친구 요청
-                </button>
+                {user.is_friend ? (
+                  <span className="rounded-full bg-[#ecf9f1] px-3 py-1.5 text-xs font-medium text-[#2E7D5B]">
+                    친구
+                  </span>
+                ) : pendingRequestIds.has(user.id) ? (
+                  <span className="rounded-full bg-[#f3f7f4] px-3 py-1.5 text-xs font-medium text-[#163126]/50">
+                    요청중
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleSendRequest(user.id)}
+                    className="rounded-full bg-[#2E7D5B]/10 px-3 py-1.5 text-xs font-medium text-[#2E7D5B] transition hover:bg-[#2E7D5B]/20"
+                  >
+                    친구 요청
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -220,12 +291,20 @@ export default function SocialContent() {
             <p className="py-6 text-center text-sm text-[#163126]/40">불러오는 중...</p>
           )}
           {!requestsLoading && friendRequests.length === 0 && (
-            <p className="py-6 text-center text-sm text-[#163126]/40">받은 친구 요청이 없어요.</p>
+            <div className="flex flex-col items-center gap-2 rounded-[24px] bg-[#f8fbf8] px-5 py-10 text-center">
+              <div className="text-3xl">💌</div>
+              <p className="text-sm font-semibold text-[#163126]">
+                받은 친구 요청이 없어요
+              </p>
+              <p className="text-xs text-[#163126]/45">
+                새로운 요청이 오면 여기에 표시돼요.
+              </p>
+            </div>
           )}
           {friendRequests.map((req) => (
             <div
               key={req.id}
-              className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-3"
+              className="flex items-center justify-between rounded-[22px] border border-[#2E7D5B]/10 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(46,125,91,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(46,125,91,0.1)]"
             >
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
@@ -242,13 +321,13 @@ export default function SocialContent() {
               <div className="flex gap-2">
                 <button
                   onClick={() => handleAccept(req.id)}
-                  className="rounded-full bg-[#2E7D5B] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#256349]"
+                  className="rounded-full bg-[#2E7D5B] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#256349]"
                 >
                   수락
                 </button>
                 <button
                   onClick={() => handleReject(req.id)}
-                  className="rounded-full border border-[#e7efe9] px-3 py-1.5 text-xs font-medium text-[#163126]/60 transition hover:bg-[#f7faf8]"
+                  className="rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-xs font-semibold text-[#163126]/60 transition hover:bg-[#f7faf8]"
                 >
                   거절
                 </button>
@@ -265,7 +344,21 @@ export default function SocialContent() {
             <p className="py-6 text-center text-sm text-[#163126]/40">불러오는 중...</p>
           )}
           {!friendsLoading && friends.length === 0 && (
-            <p className="py-6 text-center text-sm text-[#163126]/40">아직 친구가 없어요. 친구를 찾아보세요!</p>
+            <div className="flex flex-col items-center gap-2 rounded-[24px] bg-[#f8fbf8] px-5 py-10 text-center">
+              <div className="text-3xl">👥</div>
+              <p className="text-sm font-semibold text-[#163126]">
+                아직 친구가 없어요
+              </p>
+              <p className="text-xs text-[#163126]/45">
+                친구를 추가하면 함께 챌린지를 응원할 수 있어요.
+              </p>
+              <button
+                onClick={() => setActiveTab("search")}
+                className="mt-2 rounded-full bg-[#163126] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#1d4232]"
+              >
+                친구 찾기
+              </button>
+            </div>
           )}
           {friends.map((friend) => (
             <div
