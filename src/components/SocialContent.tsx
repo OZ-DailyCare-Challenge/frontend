@@ -34,6 +34,7 @@ export default function SocialContent() {
   const [friendsLoading, setFriendsLoading] = useState(false);
 
   const [message, setMessage] = useState("");
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   useEffect(() => {
     if (activeTab === "requests") loadFriendRequests();
@@ -46,7 +47,16 @@ export default function SocialContent() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(async () => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const clearPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const fetchRequests = async () => {
       try {
         const data = await getFriendRequests();
 
@@ -54,17 +64,43 @@ export default function SocialContent() {
           if (data.length > prev.length) {
             showMessage("새로운 친구 요청이 도착했어요 💌");
           }
-
           return data;
         });
 
         setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
+        setPendingRequestCount(data.length);
       } catch {
-        // polling 실패는 화면에 노출하지 않음
+        // polling 실패는 조용히 무시
       }
-    }, 30000);
+    };
 
-    return () => window.clearInterval(timer);
+    const startPolling = () => {
+      clearPolling();
+
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      interval = setInterval(fetchRequests, 30000);
+    };
+
+    void fetchRequests();
+    startPolling();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchRequests();
+      }
+
+      startPolling();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const showMessage = (msg: string) => {
@@ -107,6 +143,7 @@ export default function SocialContent() {
       const data = await getFriendRequests();
       setFriendRequests(data);
       setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
+      setPendingRequestCount(data.length);
     } catch {
       showMessage("친구 요청 목록을 불러오지 못했어요.");
     } finally {
@@ -209,13 +246,18 @@ export default function SocialContent() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+            className={`relative rounded-full px-4 py-2 text-sm font-medium transition ${
               activeTab === tab.key
                 ? "bg-[#2E7D5B] text-white"
                 : "bg-white text-[#163126]/60 border border-[#e7efe9]"
             }`}
           >
             {tab.label}
+            {tab.key === "requests" && pendingRequestCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {pendingRequestCount}
+              </span>
+            )}
           </button>
         ))}
       </div>

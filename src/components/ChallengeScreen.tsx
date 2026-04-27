@@ -594,9 +594,15 @@ export default function ChallengeScreen() {
       };
     }
 
-    await logChallengeWithFallback(challenge.userChallengeId, payload);
+    const { data: logResult } = await logChallengeWithFallback(challenge.userChallengeId, payload);
 
     const success = true;
+
+    if (logResult.is_completed) {
+      alert(`🎉 챌린지 달성! "${challenge.title}" 챌린지를 완료했어요!`);
+    } else {
+      alert(`✅ ${logResult.current_streak}일 연속 인증 완료!`);
+    }
 
     const updatedChallenge = buildLogUpdatedChallenge(challenge, success);
     updateBaseChallenge(updatedChallenge);
