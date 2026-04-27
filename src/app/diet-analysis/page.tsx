@@ -86,6 +86,7 @@ export default function DietAnalysisPage() {
     () => Boolean(selectedFile && previewUrl),
     [selectedFile, previewUrl]
   );
+  const hasUploadError = Boolean(errorMessage);
 
   useEffect(() => {
     if (!uploadHint) return;
@@ -124,7 +125,6 @@ export default function DietAnalysisPage() {
 
   const triggerDropError = (message: string) => {
     setDropErrorActive(true);
-    showHint(message, "error");
   };
 
   const applyFile = async (file: File) => {
@@ -151,6 +151,7 @@ export default function DietAnalysisPage() {
       showHint("이미지를 불러왔어요.", "success");
     } catch (error) {
       console.error("식단 이미지 미리보기 생성 실패:", error);
+      setErrorMessage("음식이 보이는 사진을 업로드해주세요.");
       triggerDropError("이미지를 불러오지 못했어요.");
     }
   };
@@ -245,7 +246,7 @@ export default function DietAnalysisPage() {
 
   const handleStartAnalysis = async (mode: MealAnalysisMode) => {
     if (!selectedFile || !previewUrl) {
-      showHint("먼저 식단 사진을 업로드해주세요.", "error");
+      setErrorMessage("음식이 보이는 사진을 업로드해주세요.");
       return;
     }
 
@@ -356,10 +357,10 @@ export default function DietAnalysisPage() {
                   duration: dropErrorActive ? 0.42 : 0.18,
                   ease: "easeOut",
                 }}
-                className={`relative rounded-[24px] border border-dashed p-6 outline-none transition-all duration-300 ${
-                  errorMessage
-                    ? "border-[#E86D6D] bg-[#FFF7F7] shadow-[0_18px_40px_rgba(232,109,109,0.12)]"
-                    : ""
+                className={`relative rounded-[28px] border p-6 outline-none transition-all duration-300 ${
+                  hasUploadError
+                    ? "border-[#ef9a9a] bg-[#fff5f5] shadow-[0_18px_40px_rgba(239,68,68,0.08)]"
+                    : "border-[#163126]/8 bg-white"
                 }`}
               >
                 <AnimatePresence>
@@ -382,7 +383,13 @@ export default function DietAnalysisPage() {
                       exit={{ opacity: 0, y: -8, scale: 0.98 }}
                       transition={{ duration: 0.25 }}
                     >
-                      <div className="overflow-hidden rounded-[20px] border border-[#163126]/8 bg-[#f5faf7]">
+                      <div
+                        className={`overflow-hidden rounded-[22px] border ${
+                          hasUploadError
+                            ? "border-[#ef9a9a]"
+                            : "border-[#dce9df]"
+                        } bg-[#f5faf7]`}
+                      >
                         <img
                           src={previewUrl}
                           alt="업로드한 식단 미리보기"
@@ -469,7 +476,7 @@ export default function DietAnalysisPage() {
                 </AnimatePresence>
 
                 <AnimatePresence>
-                  {uploadHint ? (
+                  {uploadHint && hintType !== "error" ? (
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -482,7 +489,7 @@ export default function DietAnalysisPage() {
                 </AnimatePresence>
 
                 {errorMessage && (
-                  <p className="mt-4 text-sm font-semibold text-[#D94F4F]">
+                  <p className="mt-3 text-xs font-semibold text-[#e05252]">
                     {errorMessage}
                   </p>
                 )}
