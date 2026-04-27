@@ -140,6 +140,28 @@ function mapVerificationTypeToApi(
   return "cv";
 }
 
+function mapApiStatusToUiStatus(
+  status?: string | null
+): ChallengeStatus | null {
+  if (!status) return null;
+
+  const normalized = status.toLowerCase();
+
+  if (normalized === "active" || normalized === "in_progress") {
+    return "in_progress";
+  }
+
+  if (normalized === "completed" || normalized === "done") {
+    return "done";
+  }
+
+  if (normalized === "abandoned" || normalized === "locked") {
+    return "locked";
+  }
+
+  return null;
+}
+
 function mapApiChallengeToUi(
   challenge: ApiChallenge,
   activeMap: StoredActiveChallengeMap
@@ -147,6 +169,9 @@ function mapApiChallengeToUi(
   const active = activeMap[challenge.id];
   const durationDays = Number(challenge.duration_days) || 7;
   const completionWindow = Number(challenge.required_success_days) || 5;
+
+  const apiUserChallenge = challenge.user_challenge ?? null;
+  const apiStatus = mapApiStatusToUiStatus(apiUserChallenge?.status);
 
   const logs =
     active?.logs && active.logs.length === durationDays
@@ -156,6 +181,7 @@ function mapApiChallengeToUi(
   const successCount = logs.filter((v) => v === true).length;
 
   const resolvedStatus: ChallengeStatus =
+    apiStatus ??
     active?.status ??
     (successCount >= completionWindow ? "done" : "locked");
 
@@ -180,8 +206,9 @@ function mapApiChallengeToUi(
     status: resolvedStatus,
     logs,
     lastSubmittedDate: active?.lastSubmittedDate ?? null,
-    userChallengeId: active?.userChallengeId,
-    currentStreak: active?.currentStreak ?? 0,
+    userChallengeId: apiUserChallenge?.id ?? active?.userChallengeId,
+    currentStreak:
+      apiUserChallenge?.current_streak ?? active?.currentStreak ?? 0,
     source: "base",
     aiRecommended: false,
   };
@@ -1115,6 +1142,7 @@ export default function ChallengeScreen() {
         onClose={() => setExerciseVerifyOpen(false)}
         onSubmit={handlePhotoSubmit}
         challengeTitle={selectedChallenge?.title ?? "운동 인증"}
+        errorMessage={photoError}
         submitting={photoSubmitting}
       />
     </section>
@@ -1209,21 +1237,27 @@ function ExerciseVerifyModal({
   onClose,
   onSubmit,
   challengeTitle,
+  errorMessage,
   submitting,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (file: File) => Promise<void>;
   challengeTitle: string;
+  errorMessage: string;
   submitting: boolean;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [localError, setLocalError] = useState("");
+  const displayError = localError || errorMessage;
+  const hasUploadError = Boolean(displayError);
 
   useEffect(() => {
     if (!open) {
       setFile(null);
       setPreviewUrl("");
+      setLocalError("");
     }
   }, [open]);
 
@@ -1245,10 +1279,11 @@ function ExerciseVerifyModal({
 
   const handleSubmit = async () => {
     if (!file) {
-      alert("운동 앱 스크린샷을 선택해주세요.");
+      setLocalError("운동 앱 스크린샷을 업로드해주세요.");
       return;
     }
 
+    setLocalError("");
     await onSubmit(file);
   };
 
@@ -1300,12 +1335,21 @@ function ExerciseVerifyModal({
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                setLocalError("");
+                setFile(e.target.files?.[0] ?? null);
+              }}
               className="hidden"
             />
 
             {!file ? (
-              <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#cfe0d4] bg-[#f9fcfa] px-6 py-8 text-center transition hover:border-[#9fd3b0] hover:bg-white">
+              <div
+                className={`flex min-h-[220px] flex-col items-center justify-center rounded-[28px] border px-6 py-8 text-center transition ${
+                  hasUploadError
+                    ? "border-[#ef9a9a] bg-[#fff5f5] shadow-[0_18px_40px_rgba(239,68,68,0.08)]"
+                    : "border-[#cfe0d4] bg-[#f9fcfa] hover:border-[#9fd3b0] hover:bg-white"
+                }`}
+              >
                 <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
                   <Camera className="h-9 w-9" />
                 </div>
@@ -1323,9 +1367,19 @@ function ExerciseVerifyModal({
                 </p>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-[#cfe0d4] bg-[#f9fcfa] p-4 transition hover:border-[#9fd3b0] hover:bg-white">
+              <div
+                className={`rounded-[28px] border p-4 transition ${
+                  hasUploadError
+                    ? "border-[#ef9a9a] bg-[#fff5f5] shadow-[0_18px_40px_rgba(239,68,68,0.08)]"
+                    : "border-[#cfe0d4] bg-[#f9fcfa] hover:border-[#9fd3b0] hover:bg-white"
+                }`}
+              >
                 <div className="flex items-center gap-4">
-                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[18px] border border-[#dce9df] bg-white">
+                  <div
+                    className={`h-24 w-24 shrink-0 overflow-hidden rounded-[22px] border bg-white ${
+                      hasUploadError ? "border-[#ef9a9a]" : "border-[#dce9df]"
+                    }`}
+                  >
                     {previewUrl ? (
                       <img
                         src={previewUrl}
@@ -1350,6 +1404,12 @@ function ExerciseVerifyModal({
               </div>
             )}
           </label>
+
+          {displayError && (
+            <p className="mt-3 text-xs font-semibold text-[#e05252]">
+              {displayError}
+            </p>
+          )}
         </div>
 
         <div className="mt-5 rounded-[16px] bg-[#eef9f2] px-4 py-3 text-sm font-medium text-[#2E7D5B]">
@@ -1514,20 +1574,26 @@ function applyRagRecommendations(
   );
 
   const recommended = baseChallenges
-    .filter(
-      (c) => typeof c.challengeId === "number" && recommendMap.has(c.challengeId)
-    )
-    .map((c) => ({
-      ...c,
-      aiRecommended: true,
-      recommended: true,
-      aiReason: recommendMap.get(c.challengeId as number) ?? "",
-      source: "base" as const,
-    }));
+    .filter((c) => {
+      const challengeId = c.challengeId;
+      return typeof challengeId === "number" && recommendMap.has(challengeId);
+    })
+    .map((c) => {
+      const challengeId = c.challengeId as number;
 
-  const rest = baseChallenges.filter(
-    (c) => typeof c.challengeId !== "number" || !recommendMap.has(c.challengeId)
-  );
+      return {
+        ...c,
+        aiRecommended: true,
+        recommended: true,
+        aiReason: recommendMap.get(challengeId) ?? "",
+        source: "base" as const,
+      };
+    });
+
+  const rest = baseChallenges.filter((c) => {
+    const challengeId = c.challengeId;
+    return typeof challengeId !== "number" || !recommendMap.has(challengeId);
+  });
 
   return [...recommended, ...rest];
 }
