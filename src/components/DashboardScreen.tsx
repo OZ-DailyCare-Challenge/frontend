@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   ShoppingBag,
   Clock3,
@@ -14,6 +15,10 @@ import {
 } from "lucide-react";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
+import {
+  getChallengesWithFallback,
+  type Challenge as ApiChallenge,
+} from "@/src/api/challenge";
 import { getFeed, searchUsers, sendFriendRequest, type FeedItem, type UserSearchResult } from "@/src/api/social";
 
 type ShopTab = "모자" | "옷/스카프" | "액세서리" | "배경";
@@ -49,6 +54,24 @@ type Props = {
 type HeroReactionType = "none" | "success" | "streak";
 
 const DASHBOARD_HERO_BG = "/images/skygreen.png";
+
+const feedCardVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 80 : -80,
+    opacity: 0,
+    scale: 0.96,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? -80 : 80,
+    opacity: 0,
+    scale: 0.96,
+  }),
+};
 
 
 const initialShopItems: ShopItem[] = [
@@ -167,6 +190,7 @@ function getHeroBubbleMessage(type: HeroReactionType) {
 }
 
 export default function DashboardScreen({ dashboardData }: Props) {
+  const router = useRouter();
   const challenges = useChallengeStore((state) => state.challenges);
   const submitCheck = useChallengeStore((state) => state.submitCheck);
 
@@ -178,6 +202,10 @@ export default function DashboardScreen({ dashboardData }: Props) {
   const [shopItems, setShopItems] = useState(initialShopItems);
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [serverChallenges, setServerChallenges] = useState<ApiChallenge[]>([]);
+  const [activeFeedIndex, setActiveFeedIndex] = useState(0);
+  const [dragDirection, setDragDirection] = useState(0);
+  const [autoSlide, setAutoSlide] = useState(true);
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set());
@@ -186,7 +214,94 @@ export default function DashboardScreen({ dashboardData }: Props) {
     getFeed().then(setFeedItems).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    getChallengesWithFallback()
+      .then((res) => setServerChallenges(res.challenges ?? []))
+      .catch(() => setServerChallenges([]));
+  }, []);
+
+  const groupedFeedItems = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        user_id: number;
+        nickname: string;
+        profile_image?: string | null;
+        challenges: FeedItem[];
+      }
+    >();
+
+    feedItems.forEach((item) => {
+      const existing = map.get(item.user_id);
+
+      if (existing) {
+        existing.challenges.push(item);
+        return;
+      }
+
+      map.set(item.user_id, {
+        user_id: item.user_id,
+        nickname: item.nickname,
+        profile_image: item.profile_image,
+        challenges: [item],
+      });
+    });
+
+    return Array.from(map.values());
+  }, [feedItems]);
+
+  const activeFeed = groupedFeedItems[activeFeedIndex] ?? null;
+  const activeFeedCheerKey = activeFeed ? `feed-${activeFeed.user_id}` : "";
+  const activeFeedCheered = cheeredKeys.has(activeFeedCheerKey);
+
+  const handlePrevFeed = () => {
+    setDragDirection(-1);
+    setActiveFeedIndex((prev) =>
+      groupedFeedItems.length
+        ? (prev - 1 + groupedFeedItems.length) % groupedFeedItems.length
+        : 0
+    );
+  };
+
+  const handleNextFeed = () => {
+    setDragDirection(1);
+    setActiveFeedIndex((prev) =>
+      groupedFeedItems.length ? (prev + 1) % groupedFeedItems.length : 0
+    );
+  };
+
+  useEffect(() => {
+    if (!autoSlide || groupedFeedItems.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setDragDirection(1);
+      setActiveFeedIndex((prev) => (prev + 1) % groupedFeedItems.length);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [autoSlide, groupedFeedItems.length]);
+
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
+  const activeServerChallenges = useMemo(() => {
+    return serverChallenges.filter((challenge) => {
+      const status = challenge.user_challenge?.status?.toLowerCase();
+      return status === "active" || status === "in_progress";
+    });
+  }, [serverChallenges]);
+
+  const activeChallengeCount = activeServerChallenges.length;
+
+  const completedTodayCount = activeServerChallenges.filter((challenge) => {
+    const completedAt = challenge.user_challenge?.completed_at;
+    if (!completedAt) return false;
+
+    const today = new Date().toISOString().slice(0, 10);
+    return completedAt.slice(0, 10) === today;
+  }).length;
+
+  const dashboardChallengePercent = activeChallengeCount
+    ? Math.round((completedTodayCount / activeChallengeCount) * 100)
+    : 0;
   const completedCount = todayChallenges.filter((item) => item.done).length;
   const challengePercent = todayChallenges.length
     ? Math.round((completedCount / todayChallenges.length) * 100)
@@ -442,7 +557,7 @@ export default function DashboardScreen({ dashboardData }: Props) {
                 />
                 <InfoMiniRow
                   icon={<CalendarDays size={16} />}
-                  text={`오늘 챌린지 ${completedCount}개 완료 중`}
+                  text="건강 수치 개선을 위한 루틴을 이어가고 있어요"
                 />
               </div>
 
@@ -474,48 +589,47 @@ export default function DashboardScreen({ dashboardData }: Props) {
                     오늘의 챌린지
                   </p>
                   <p className="mt-1 text-xs text-[#163126]/55">
-                    {completedCount}/{todayChallenges.length} 완료
+                    {completedTodayCount}/{activeChallengeCount} 완료
                   </p>
                 </div>
                 <span className="rounded-full bg-[#eff8df] px-3 py-1 text-xs font-semibold text-[#6a8c1e]">
-                  {challengePercent}% 달성
+                  {dashboardChallengePercent}% 달성
                 </span>
               </div>
 
               <div className="mb-4 h-2.5 overflow-hidden rounded-full bg-[#163126]/8">
                 <div
                   className="h-full rounded-full bg-[linear-gradient(90deg,#8ce7a7,#b7f3c9)] transition-all"
-                  style={{ width: `${challengePercent}%` }}
+                  style={{ width: `${dashboardChallengePercent}%` }}
                 />
               </div>
 
               <div className="space-y-3">
-                {todayChallenges.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => submitCheck(item.id, !item.done)}
-                    className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
-                      item.done
-                        ? "border-[#cfeede] bg-[#f7fcf8]"
-                        : "border-[#163126]/8 bg-[#fbfdfb] hover:bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-base">{item.done ? "✅" : "📝"}</span>
-                      <span className="text-sm font-medium text-[#163126]">
-                        {item.label}
+                {activeServerChallenges.length === 0 ? (
+                  <div className="rounded-2xl bg-[#f8fbf8] px-4 py-5 text-sm text-[#163126]/50">
+                    진행 중인 챌린지가 없어요.
+                  </div>
+                ) : (
+                  activeServerChallenges.slice(0, 3).map((challenge) => (
+                    <div
+                      key={challenge.id}
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-[#163126]">
+                          {challenge.title}
+                        </p>
+                        <p className="mt-1 text-xs text-[#163126]/45">
+                          {challenge.user_challenge?.current_streak ?? 0}일 연속 진행 중
+                        </p>
+                      </div>
+
+                      <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                        진행중
                       </span>
                     </div>
-
-                    <span
-                      className={`h-4 w-4 rounded-full border ${
-                        item.done
-                          ? "border-[#2E7D5B] bg-[#2E7D5B]"
-                          : "border-[#163126]/18 bg-white"
-                      }`}
-                    />
-                  </button>
-                ))}
+                  ))
+                )}
               </div>
             </motion.div>
           </div>
@@ -530,64 +644,184 @@ export default function DashboardScreen({ dashboardData }: Props) {
           >
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-[#163126]">
-                  친구 챌린지 피드
-                </p>
+                <p className="text-sm font-semibold text-[#163126]">친구 활동</p>
                 <p className="mt-1 text-xs text-[#163126]/55">
-                  친구들의 건강 실천 소식을 확인해보세요
+                  친구들의 챌린지 인증 소식을 확인해보세요
                 </p>
               </div>
 
-              <button className="text-xs font-semibold text-[#2E7D5B]">
-                응원하기
+              <button
+                onClick={() => router.push("/social/feed")}
+                className="text-xs font-semibold text-[#2E7D5B]"
+              >
+                전체보기 ›
               </button>
             </div>
 
-            <div className="space-y-3">
-              {feedItems.length === 0 && (
-                <p className="py-6 text-center text-xs text-[#163126]/40">
+            {groupedFeedItems.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-[24px] bg-[#f8fbf8] px-5 py-10 text-center">
+                <div className="text-3xl">🐹</div>
+                <p className="text-sm font-semibold text-[#163126]">
+                  아직 친구 활동이 없어요
+                </p>
+                <p className="text-xs text-[#163126]/45">
                   친구가 챌린지를 인증하면 여기에 표시돼요.
                 </p>
-              )}
-              {feedItems.map((item) => {
-                const key = `${item.user_id}-${item.created_at}`;
-                const cheered = cheeredKeys.has(key);
+              </div>
+            ) : (
+              <div
+                onMouseEnter={() => setAutoSlide(false)}
+                onMouseLeave={() => setAutoSlide(true)}
+              >
+                <div className="mb-5 flex gap-4 overflow-x-auto overflow-y-hidden scroll-smooth pb-2 scrollbar-hide cursor-grab active:cursor-grabbing">
+                  {groupedFeedItems.map((friend, index) => {
+                    const active = index === activeFeedIndex;
 
-                return (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecf9f1] text-sm font-bold text-[#2E7D5B]">
-                        {item.nickname[0]}
-                      </div>
+                    return (
+                      <button
+                        key={friend.user_id}
+                        onClick={() => {
+                          setDragDirection(index > activeFeedIndex ? 1 : -1);
+                          setActiveFeedIndex(index);
+                        }}
+                        className="flex shrink-0 flex-col items-center gap-2"
+                      >
+                        <div
+                          className={`h-14 w-14 overflow-hidden rounded-full bg-[#ecf9f1] transition ${
+                            active
+                              ? "ring-2 ring-[#2E7D5B] ring-offset-2"
+                              : "opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          {friend.profile_image ? (
+                            <img
+                              src={friend.profile_image}
+                              alt={friend.nickname}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-sm font-bold text-[#2E7D5B]">
+                              {friend.nickname[0]}
+                            </div>
+                          )}
+                        </div>
 
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#163126]">
-                          {item.nickname}
-                        </p>
-                        <p className="truncate text-xs text-[#163126]/58">
-                          {item.challenge_title} · {item.current_streak}일 연속
-                        </p>
-                      </div>
-                    </div>
+                        <span className="max-w-[64px] truncate text-xs font-medium text-[#163126]">
+                          {friend.nickname}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
+                <div className="relative overflow-hidden">
+                  <AnimatePresence mode="wait" custom={dragDirection}>
+                    {activeFeed && (
+                      <motion.div
+                        key={activeFeed.user_id}
+                        custom={dragDirection}
+                        variants={feedCardVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={{
+                          x: { type: "spring", stiffness: 280, damping: 28 },
+                          opacity: { duration: 0.18 },
+                          scale: { duration: 0.2 },
+                        }}
+                        drag="x"
+                        dragConstraints={{ left: 0, right: 0 }}
+                        dragElastic={0.18}
+                        onDragEnd={(_, info) => {
+                          if (info.offset.x < -70) handleNextFeed();
+                          if (info.offset.x > 70) handlePrevFeed();
+                        }}
+                        className="rounded-[26px] border border-[#163126]/8 bg-white p-5 shadow-[0_14px_36px_rgba(46,125,91,0.06)]"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 overflow-hidden rounded-full bg-[#ecf9f1]">
+                              {activeFeed.profile_image ? (
+                                <img
+                                  src={activeFeed.profile_image}
+                                  alt={activeFeed.nickname}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-[#2E7D5B]">
+                                  {activeFeed.nickname[0]}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="text-sm font-bold text-[#163126]">
+                                {activeFeed.nickname}
+                              </p>
+                              <p className="mt-1 text-xs text-[#163126]/45">
+                                오늘 인증 완료
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleCheer(activeFeedCheerKey)}
+                            disabled={activeFeedCheered}
+                            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                              activeFeedCheered
+                                ? "cursor-default bg-[#ecf9f1] text-[#2E7D5B]"
+                                : "bg-[#163126] text-white hover:bg-[#1d4232]"
+                            }`}
+                          >
+                            {activeFeedCheered ? "응원 완료 💚" : "응원하기 💚"}
+                          </button>
+                        </div>
+
+                        <div className="mt-5 rounded-[22px] bg-[#f8fbf8] px-4 py-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2E7D5B]">
+                            today challenge
+                          </p>
+
+                          <div className="mt-3 space-y-2">
+                            {activeFeed.challenges.map((challenge) => (
+                              <div
+                                key={`${challenge.user_id}-${challenge.challenge_title}-${challenge.created_at}`}
+                                className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3"
+                              >
+                                <span className="text-sm font-semibold text-[#163126]">
+                                  {challenge.challenge_title}
+                                </span>
+
+                                <span className="shrink-0 rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                  {challenge.current_streak}일 연속
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="mt-4 flex justify-center gap-2">
+                  {groupedFeedItems.map((friend, index) => (
                     <button
-                      onClick={() => handleCheer(key)}
-                      disabled={cheered}
-                      className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition ${
-                        cheered
-                          ? "bg-[#163126] text-white cursor-default"
-                          : "border border-[#163126]/10 bg-white text-[#163126]"
+                      key={`dot-${friend.user_id}`}
+                      onClick={() => {
+                        setDragDirection(index > activeFeedIndex ? 1 : -1);
+                        setActiveFeedIndex(index);
+                      }}
+                      className={`h-2 rounded-full transition-all ${
+                        index === activeFeedIndex
+                          ? "w-5 bg-[#2E7D5B]"
+                          : "w-2 bg-[#d8e6dd]"
                       }`}
-                    >
-                      {cheered ? "응원 완료" : "응원"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
 
           <motion.div
