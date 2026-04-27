@@ -41,6 +41,8 @@ export type ChallengeLogResponse = {
   input_value?: string;
   cv_result_id?: number;
   created_at: string;
+  current_streak: number;
+  is_completed: boolean;
 };
 
 export type ChallengeMessageResponse = {
@@ -330,6 +332,8 @@ export async function logChallengeWithFallback(
         input_value: payload.input_value ?? "",
         cv_result_id: payload.cv_result_id,
         created_at: new Date().toISOString(),
+        current_streak: 0,
+        is_completed: false,
       },
     };
   }
