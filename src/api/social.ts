@@ -16,6 +16,11 @@ export type FriendRequest = {
   created_at: string;
 };
 
+export type FriendRequestSentResponse = {
+  request_id: number;
+  message: string;
+};
+
 export type Friend = {
   friend_id: number;
   nickname: string;
@@ -64,12 +69,17 @@ export async function searchUsers(nickname: string): Promise<UserSearchResult[]>
   return data.users ?? [];
 }
 
-export async function sendFriendRequest(receiverId: number): Promise<void> {
+export async function sendFriendRequest(
+  receiverId: number
+): Promise<FriendRequestSentResponse> {
   const response = await fetch(
     `${getApiBaseUrl()}/api/v1/social/friends/request/${receiverId}`,
     { method: "POST", headers: getAuthHeaders() }
   );
+
   if (!response.ok) await parseErrorResponse(response, "친구 요청 실패");
+
+  return response.json();
 }
 
 export async function getFriendRequests(): Promise<FriendRequest[]> {

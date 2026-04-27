@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { UtensilsCrossed } from "lucide-react";
 import AppShell from "@/src/components/AppShell";
 import ECGLoader from "@/src/components/ECGLoader";
 import { getMealAnalysisResult } from "@/src/api/meals";
@@ -383,59 +382,32 @@ export default function DietAnalyzingPage() {
                   <motion.div
                     animate={{ height: pulling ? 136 : 104 }}
                     transition={{ duration: 0.35, ease: "easeInOut" }}
-                    className="absolute left-1/2 top-[280px] w-[3px] -translate-x-1/2 rounded-full bg-[#2f332f]"
+                    className="absolute left-1/2 top-[280px] z-20 ml-[6px] w-[2px] -translate-x-1/2 bg-[#163126]"
                   />
 
                   <motion.div
                     animate={{ y: pulling ? 30 : 0 }}
                     transition={{ duration: 0.35, ease: "easeInOut" }}
-                    className="absolute left-1/2 top-[382px] h-[38px] w-[38px] -translate-x-1/2 rounded-full border border-[#163126]/10 bg-white shadow-[0_10px_24px_rgba(22,49,38,0.12)]"
+                    className="absolute left-1/2 top-[382px] z-20 ml-[6px] h-[10px] w-[10px] -translate-x-1/2 rounded-full border border-[#163126]/20 bg-white"
                   />
 
                   <motion.div
                     animate={{
-                      y: pulling ? 26 : started ? [0, -5, 0] : 0,
-                      x: pulling ? -8 : 0,
+                      y: pulling ? 26 : 0,
                     }}
                     transition={
-                      started && !pulling
-                        ? {
-                            duration: 1.8,
-                            repeat: Infinity,
-                            ease: "easeInOut",
-                          }
-                        : {
-                            duration: 0.35,
-                            ease: "easeInOut",
-                          }
-                    }
-                    className="absolute bottom-0 left-1/2 flex -translate-x-1/2 flex-col items-center"
-                  >
-                    <motion.div
-                      animate={{ rotate: pulling ? -16 : 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="mb-1 text-xs text-[#163126]/40"
-                    >
-                      ─╮
-                    </motion.div>
-
-                    <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden rounded-full bg-[radial-gradient(circle_at_35%_30%,#fffaf0,#edf7ef)] shadow-[0_18px_40px_rgba(22,49,38,0.10)]">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/80 text-[#8d7bb5] shadow-[0_10px_24px_rgba(22,49,38,0.08)]">
-                        <UtensilsCrossed size={34} strokeWidth={2.2} />
-                      </div>
-                    </div>
-
-                    <motion.div
-                      animate={{ y: [0, -3, 0] }}
-                      transition={{
-                        duration: 2.2,
-                        repeat: Infinity,
+                      {
+                        duration: 0.35,
                         ease: "easeInOut",
-                      }}
-                      className="mt-4 rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#2E7D5B] shadow-[0_10px_22px_rgba(22,49,38,0.08)]"
-                    >
-                      {started ? "식단 정보를 분석 중이에요 🍽️" : "분석 준비 중..."}
-                    </motion.div>
+                      }
+                    }
+                    className="absolute bottom-[-18px] left-1/2 h-[190px] w-[170px] -translate-x-1/2"
+                  >
+                    <img
+                      src="/images/buddy-analyzing.png"
+                      alt="Buddy"
+                      className="pointer-events-none absolute bottom-[30px] left-1/2 z-10 ml-[40px] w-[140px] -translate-x-1/2 translate-y-[34px]"
+                    />
                   </motion.div>
                 </div>
               </div>

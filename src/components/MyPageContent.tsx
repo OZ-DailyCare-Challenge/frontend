@@ -320,6 +320,24 @@ export default function MyPageContent() {
     typeof profile?.current_point === "number" ? profile.current_point : 0;
 
   const latestAnalysis = analysisHistory[0] ?? null;
+  const selectedAnalysis = selectedAnalysisGroup[0];
+  const missions = useMemo(() => {
+    if (!selectedAnalysis?.ai_missions) return [];
+
+    if (Array.isArray(selectedAnalysis.ai_missions)) {
+      return selectedAnalysis.ai_missions;
+    }
+
+    if (typeof selectedAnalysis.ai_missions === "string") {
+      try {
+        return JSON.parse(selectedAnalysis.ai_missions);
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }, [selectedAnalysis]);
 
   const handleProfileChange = (key: keyof ProfileForm, value: string) => {
     setProfileForm((prev) => ({ ...prev, [key]: value }));
@@ -895,28 +913,24 @@ export default function MyPageContent() {
               <LoadingBox text="해당 기록의 상세 결과가 없어요." />
             ) : (
               <div className="space-y-4">
-                {selectedAnalysisGroup.map((item) => (
+                {selectedAnalysis ? (
                   <div
-                    key={`detail-${item.id}`}
+                    key={`detail-${selectedAnalysis.id}`}
                     className="rounded-[22px] border border-[#163126]/8 bg-[#f9fcfa] p-5"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-[#eef9f2] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
-                        위험도 {item.cvd_risk_percent}%
+                        위험도 {selectedAnalysis.cvd_risk_percent}%
                       </span>
                       <span className="rounded-full bg-[#fff8df] px-3 py-1 text-xs font-semibold text-[#8a6c00]">
-                        {formatRiskLabel(item.risk_level)}
+                        {formatRiskLabel(selectedAnalysis.risk_level)}
                       </span>
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <InfoBox
                         label="심혈관 나이"
-                        value={String(item.cvd_age)}
-                      />
-                      <InfoBox
-                        label="트리거 유형"
-                        value={item.trigger_type || "-"}
+                        value={String(selectedAnalysis.cvd_age)}
                       />
                     </div>
 
@@ -924,31 +938,61 @@ export default function MyPageContent() {
                       <TextBlock
                         label="주요 위험 요인"
                         value={
-                          item.top_risk_factors?.length
-                            ? item.top_risk_factors.join(", ")
+                          selectedAnalysis.top_risk_factors?.length
+                            ? selectedAnalysis.top_risk_factors.join(", ")
                             : "-"
                         }
                       />
                       <TextBlock
                         label="AI 평가"
-                        value={item.ai_evaluation || "-"}
+                        value={selectedAnalysis.ai_evaluation || "-"}
                       />
-                      <TextBlock label="AI 경고" value={item.ai_alert || "-"} />
                       <TextBlock
-                        label="AI 미션"
-                        value={
-                          item.ai_missions?.length
-                            ? item.ai_missions.join(", ")
-                            : "-"
-                        }
+                        label="AI 경고"
+                        value={selectedAnalysis.ai_alert || "-"}
                       />
+                      <div>
+                        <p className="text-sm font-semibold text-[#163126]">
+                          AI 미션
+                        </p>
+                        {missions.length > 0 ? (
+                          <div className="mt-2 space-y-2">
+                            {missions.map(
+                              (mission: any, index: number) => (
+                                <div
+                                  key={index}
+                                  className="rounded-[16px] bg-white px-4 py-3"
+                                >
+                                  <p className="text-sm font-semibold text-[#163126]">
+                                    {mission.title || `AI 추천 챌린지 ${index + 1}`}
+                                  </p>
+
+                                  {mission.action && (
+                                    <p className="mt-1 text-sm text-[#163126]/60">
+                                      {mission.action}
+                                    </p>
+                                  )}
+
+                                  {mission.reason && (
+                                    <p className="mt-2 text-xs text-[#2E7D5B]">
+                                      {mission.reason}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-sm text-[#163126]/58">-</p>
+                        )}
+                      </div>
                       <TextBlock
                         label="AI 응원 메시지"
-                        value={item.ai_encouragement || "-"}
+                        value={selectedAnalysis.ai_encouragement || "-"}
                       />
                     </div>
                   </div>
-                ))}
+                ) : null}
               </div>
             )}
           </SectionCard>
