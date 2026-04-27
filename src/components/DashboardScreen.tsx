@@ -886,7 +886,7 @@ export default function DashboardScreen({ dashboardData }: Props) {
 
                   {user.is_friend ? (
                     <span className="text-xs text-[#163126]/40">친구</span>
-                  ) : requestedIds.has(user.id) ? (
+                  ) : user.is_requested || requestedIds.has(user.id) ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-[#163126]/10 bg-white px-3 py-2 text-xs font-semibold text-[#163126]/50">
                       요청됨
                     </span>

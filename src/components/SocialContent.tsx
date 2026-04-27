@@ -308,7 +308,7 @@ export default function SocialContent() {
                   <span className="rounded-full bg-[#ecf9f1] px-3 py-1.5 text-xs font-medium text-[#2E7D5B]">
                     친구
                   </span>
-                ) : pendingRequestIds.has(user.id) ? (
+                ) : user.is_requested || pendingRequestIds.has(user.id) ? (
                   <span className="rounded-full bg-[#f3f7f4] px-3 py-1.5 text-xs font-medium text-[#163126]/50">
                     요청중
                   </span>
