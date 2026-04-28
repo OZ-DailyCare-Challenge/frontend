@@ -26,6 +26,7 @@ import {
   requestExerciseVerification,
   waitExerciseVerificationCompletion,
 } from "@/src/api/exercise";
+import { notificationStorage } from "@/src/utils/notificationStorage";
 
 type ChallengeStatus = "in_progress" | "done" | "locked";
 type VerificationType = "check" | "number" | "photo";
@@ -598,10 +599,12 @@ export default function ChallengeScreen() {
 
     const success = true;
 
-    if (logResult.is_completed) {
-      alert(`🎉 챌린지 달성! "${challenge.title}" 챌린지를 완료했어요!`);
-    } else {
-      alert(`✅ ${logResult.current_streak}일 연속 인증 완료!`);
+    if (notificationStorage.isChallengeAlertOn()) {
+      if (logResult.is_completed) {
+        alert(`🎉 챌린지 달성! "${challenge.title}" 챌린지를 완료했어요!`);
+      } else {
+        alert(`✅ ${logResult.current_streak}일 연속 인증 완료!`);
+      }
     }
 
     const updatedChallenge = buildLogUpdatedChallenge(challenge, success);

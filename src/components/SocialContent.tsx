@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
+import { notificationStorage } from "@/src/utils/notificationStorage";
 import Link from "next/link";
 import {
   searchUsers,
@@ -60,15 +61,20 @@ export default function SocialContent() {
       try {
         const data = await getFriendRequests();
 
-        setFriendRequests((prev) => {
-          if (data.length > prev.length) {
-            showMessage("새로운 친구 요청이 도착했어요 💌");
-          }
-          return data;
-        });
-
-        setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
-        setPendingRequestCount(data.length);
+        if (notificationStorage.isFriendAlertOn()) {
+          setFriendRequests((prev) => {
+            if (data.length > prev.length) {
+              showMessage("새로운 친구 요청이 도착했어요 💌");
+            }
+            return data;
+          });
+          setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
+          setPendingRequestCount(data.length);
+        } else {
+          setFriendRequests(data);
+          setPendingRequestIds(new Set());
+          setPendingRequestCount(0);
+        }
       } catch {
         // polling 실패는 조용히 무시
       }
