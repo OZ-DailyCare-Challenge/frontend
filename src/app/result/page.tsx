@@ -21,6 +21,7 @@ import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useAccessStore } from "@/src/store/access-store";
 
 type Mission = {
@@ -364,6 +365,8 @@ export default function ResultPage() {
   const isGuest = !storage.getAccessToken();
 
   useEffect(() => {
+    perfMark("result:mounted");
+    perfMeasure("analyzing-to-result", "analyzing:mounted", "result:mounted");
     setMounted(true);
   }, []);
 
@@ -375,6 +378,7 @@ export default function ResultPage() {
     const load = async () => {
       try {
         setLoading(true);
+        perfMark("result:data-read:start");
 
         const taskRaw = sessionStorage.getItem("health-analysis-task");
         const flowComplete = sessionStorage.getItem("health-flow-complete");
@@ -477,6 +481,13 @@ export default function ResultPage() {
       } finally {
         if (!cancelled) {
           setLoading(false);
+          perfMark("result:data-read:end");
+          perfMeasure(
+            "result:data-read",
+            "result:data-read:start",
+            "result:data-read:end"
+          );
+          perfMark("result:ready");
         }
       }
     };

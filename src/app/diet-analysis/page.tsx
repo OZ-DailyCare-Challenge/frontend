@@ -213,12 +213,14 @@ export default function DietAnalysisPage() {
     const imageItem = items.find((item) => item.type.startsWith("image/"));
 
     if (!imageItem) {
+      setErrorMessage("음식이 보이는 사진을 업로드해주세요.");
       triggerDropError("이미지 파일만 붙여넣을 수 있어요.");
       return;
     }
 
     const file = imageItem.getAsFile();
     if (!file) {
+      setErrorMessage("음식이 보이는 사진을 업로드해주세요.");
       triggerDropError("이미지를 불러오지 못했어요.");
       return;
     }
@@ -500,9 +502,9 @@ export default function DietAnalysisPage() {
               <motion.button
                 type="button"
                 onClick={() => handleStartAnalysis("free")}
-                disabled={!hasImage || loadingMode !== null}
+                disabled={!hasImage || hasUploadError || loadingMode !== null}
                 animate={
-                  cardsReadyPulse && hasImage
+                  cardsReadyPulse && hasImage && !hasUploadError
                     ? {
                         scale: [1, 1.02, 1],
                         boxShadow: [
@@ -513,8 +515,8 @@ export default function DietAnalysisPage() {
                       }
                     : {}
                 }
-                whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
-                whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
+                whileHover={!hasImage || hasUploadError || loadingMode ? {} : { y: -2 }}
+                whileTap={!hasImage || hasUploadError || loadingMode ? {} : { scale: 0.995 }}
                 transition={{ duration: 0.55 }}
                 className="block w-full rounded-[28px] border border-[#163126]/8 bg-white/70 p-6 text-left transition-all duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-[0_18px_40px_rgba(46,125,91,0.12)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
               >
@@ -541,9 +543,9 @@ export default function DietAnalysisPage() {
               <motion.button
                 type="button"
                 onClick={() => handleStartAnalysis("premium")}
-                disabled={!hasImage || loadingMode !== null}
+                disabled={!hasImage || hasUploadError || loadingMode !== null}
                 animate={
-                  cardsReadyPulse && hasImage
+                  cardsReadyPulse && hasImage && !hasUploadError
                     ? {
                         scale: [1, 1.02, 1],
                         boxShadow: [
@@ -554,8 +556,8 @@ export default function DietAnalysisPage() {
                       }
                     : {}
                 }
-                whileHover={!hasImage || loadingMode ? {} : { y: -2 }}
-                whileTap={!hasImage || loadingMode ? {} : { scale: 0.995 }}
+                whileHover={!hasImage || hasUploadError || loadingMode ? {} : { y: -2 }}
+                whileTap={!hasImage || hasUploadError || loadingMode ? {} : { scale: 0.995 }}
                 transition={{ duration: 0.55, delay: 0.05 }}
                 className="block w-full rounded-[28px] border border-[#163126]/8 bg-white/70 p-6 text-left transition-all duration-300 hover:-translate-y-1 hover:bg-[#FFFDF8] hover:shadow-[0_18px_40px_rgba(201,137,24,0.12)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
               >

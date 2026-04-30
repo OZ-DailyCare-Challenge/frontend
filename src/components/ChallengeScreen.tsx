@@ -217,7 +217,9 @@ function mapApiChallengeToUi(
 
 function buildLogUpdatedChallenge(
   challenge: ChallengeItem,
-  success: boolean
+  success: boolean,
+  currentStreak?: number,
+  isCompleted?: boolean
 ): ChallengeItem {
   const nextLogs = [...challenge.logs];
   const firstEmptyIndex = nextLogs.findIndex((log) => log === null);
@@ -228,7 +230,9 @@ function buildLogUpdatedChallenge(
 
   const successCount = nextLogs.filter((v) => v === true).length;
   const nextStatus: ChallengeStatus =
-    successCount >= challenge.completionWindow ? "done" : "in_progress";
+    isCompleted || successCount >= challenge.completionWindow
+      ? "done"
+      : "in_progress";
 
   const nextFirstEmptyIndex = nextLogs.findIndex((log) => log === null);
   const nextCurrentDay =
@@ -242,9 +246,12 @@ function buildLogUpdatedChallenge(
     lastSubmittedDate: new Date().toISOString().slice(0, 10),
     status: nextStatus,
     currentDay: nextCurrentDay,
-    currentStreak: success
-      ? (challenge.currentStreak ?? 0) + 1
-      : challenge.currentStreak ?? 0,
+    currentStreak:
+      typeof currentStreak === "number"
+        ? currentStreak
+        : success
+        ? (challenge.currentStreak ?? 0) + 1
+        : challenge.currentStreak ?? 0,
   };
 }
 
@@ -439,6 +446,19 @@ export default function ChallengeScreen() {
     );
   };
 
+  const refreshBaseChallengesFromServer = async () => {
+    const challengeResponse = await getChallengesWithFallback();
+    setUsingFallbackChallenges(challengeResponse.isFallback);
+
+    const activeMap = getStoredActiveChallengeMap();
+    const mapped = (challengeResponse.challenges ?? []).map((challenge) =>
+      mapApiChallengeToUi(challenge, activeMap)
+    );
+
+    setBaseChallenges(mapped);
+    return mapped;
+  };
+
   const handleStartChallenge = async () => {
     if (!selectedChallenge) return;
     if (typeof selectedChallenge.challengeId !== "number") return;
@@ -473,7 +493,22 @@ export default function ChallengeScreen() {
       );
     } catch (error) {
       console.error("챌린지 시작 실패:", error);
-      alert("챌린지 시작에 실패했어요.");
+
+      if (
+        error instanceof Error &&
+        (error.message.includes("409") ||
+          error.message.includes("이미 참여 중인 챌린지입니다"))
+      ) {
+        try {
+          await refreshBaseChallengesFromServer();
+          alert("이미 참여 중인 챌린지예요. 진행 상태를 동기화했어요.");
+        } catch (refreshError) {
+          console.error("챌린지 상태 재조회 실패:", refreshError);
+          alert("이미 참여 중인 챌린지예요. 화면을 새로고침해주세요.");
+        }
+      } else {
+        alert("챌린지 시작에 실패했어요.");
+      }
     } finally {
       setLoadingAction(false);
     }
@@ -512,7 +547,22 @@ export default function ChallengeScreen() {
       );
     } catch (error) {
       console.error("챌린지 재시작 실패:", error);
-      alert("챌린지 재시작에 실패했어요.");
+
+      if (
+        error instanceof Error &&
+        (error.message.includes("409") ||
+          error.message.includes("이미 참여 중인 챌린지입니다"))
+      ) {
+        try {
+          await refreshBaseChallengesFromServer();
+          alert("이미 참여 중인 챌린지예요. 진행 상태를 동기화했어요.");
+        } catch (refreshError) {
+          console.error("챌린지 상태 재조회 실패:", refreshError);
+          alert("이미 참여 중인 챌린지예요. 화면을 새로고침해주세요.");
+        }
+      } else {
+        alert("챌린지 재시작에 실패했어요.");
+      }
     } finally {
       setLoadingAction(false);
     }
@@ -595,7 +645,10 @@ export default function ChallengeScreen() {
       };
     }
 
-    const { data: logResult } = await logChallengeWithFallback(challenge.userChallengeId, payload);
+    const { data: logResult } = await logChallengeWithFallback(
+      challenge.userChallengeId,
+      payload
+    );
 
     const success = true;
 
@@ -607,7 +660,12 @@ export default function ChallengeScreen() {
       }
     }
 
-    const updatedChallenge = buildLogUpdatedChallenge(challenge, success);
+    const updatedChallenge = buildLogUpdatedChallenge(
+      challenge,
+      success,
+      logResult.current_streak,
+      logResult.is_completed
+    );
     updateBaseChallenge(updatedChallenge);
     persistChallengeItemToStorage(updatedChallenge);
     triggerCardPulse(challenge.id);
@@ -621,7 +679,6 @@ export default function ChallengeScreen() {
     try {
       setLoadingAction(true);
       await submitChallengeLog(selectedChallenge);
-      alert("오늘 인증이 완료되었어요.");
     } catch (error) {
       console.error("챌린지 체크 인증 실패:", error);
       alert("오늘 인증에 실패했어요.");
@@ -647,7 +704,6 @@ export default function ChallengeScreen() {
       );
 
       setNumberInput("");
-      alert("오늘 수치 인증이 완료되었어요.");
     } catch (error) {
       console.error("챌린지 수치 인증 실패:", error);
       alert("오늘 인증에 실패했어요.");
@@ -688,7 +744,6 @@ export default function ChallengeScreen() {
 
       setPhotoUploaded(true);
       setExerciseVerifyOpen(false);
-      alert("운동 인증이 완료되었어요!");
     } catch (error) {
       console.error("운동 사진 인증 실패:", error);
       setPhotoError(

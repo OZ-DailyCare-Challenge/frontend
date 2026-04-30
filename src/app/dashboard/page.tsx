@@ -10,6 +10,7 @@ import { getDashboard } from "@/src/api/user";
 import { getHealthRecords } from "@/src/api/health";
 import { getAnalysisHistory } from "@/src/api/analysis";
 import { storage } from "@/src/utils/storage";
+import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
 
@@ -185,7 +186,14 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
+    perfMark("dashboard:mounted");
+  }, []);
+
+  useEffect(() => {
     const init = async () => {
+      let dataStarted = false;
+      let ready = false;
+
       try {
         const token = storage.getAccessToken();
 
@@ -193,6 +201,9 @@ export default function DashboardPage() {
           router.replace("/login");
           return;
         }
+
+        dataStarted = true;
+        perfMark("dashboard:data:start");
 
         const [dashboardRes, healthRes, analysisRes] = await Promise.all([
           getDashboard(),
@@ -223,10 +234,24 @@ export default function DashboardPage() {
         );
 
         setDashboardData(viewData);
+        ready = true;
       } catch (error) {
         console.error("대시보드 초기화 실패:", error);
         router.replace("/input");
       } finally {
+        if (dataStarted) {
+          perfMark("dashboard:data:end");
+          perfMeasure(
+            "dashboard:data",
+            "dashboard:data:start",
+            "dashboard:data:end"
+          );
+        }
+
+        if (ready) {
+          perfMark("dashboard:ready");
+        }
+
         setChecking(false);
       }
     };
