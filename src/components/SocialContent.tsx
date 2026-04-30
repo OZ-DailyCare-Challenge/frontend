@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
+import { notificationStorage } from "@/src/utils/notificationStorage";
 import Link from "next/link";
 import {
   searchUsers,
@@ -60,15 +61,20 @@ export default function SocialContent() {
       try {
         const data = await getFriendRequests();
 
-        setFriendRequests((prev) => {
-          if (data.length > prev.length) {
-            showMessage("새로운 친구 요청이 도착했어요 💌");
-          }
-          return data;
-        });
-
-        setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
-        setPendingRequestCount(data.length);
+        if (notificationStorage.isFriendAlertOn()) {
+          setFriendRequests((prev) => {
+            if (data.length > prev.length) {
+              showMessage("새로운 친구 요청이 도착했어요 💌");
+            }
+            return data;
+          });
+          setPendingRequestIds(new Set(data.map((req) => req.requester_id)));
+          setPendingRequestCount(data.length);
+        } else {
+          setFriendRequests(data);
+          setPendingRequestIds(new Set());
+          setPendingRequestCount(0);
+        }
       } catch {
         // polling 실패는 조용히 무시
       }
@@ -308,7 +314,7 @@ export default function SocialContent() {
                   <span className="rounded-full bg-[#ecf9f1] px-3 py-1.5 text-xs font-medium text-[#2E7D5B]">
                     친구
                   </span>
-                ) : pendingRequestIds.has(user.id) ? (
+                ) : user.is_requested || pendingRequestIds.has(user.id) ? (
                   <span className="rounded-full bg-[#f3f7f4] px-3 py-1.5 text-xs font-medium text-[#163126]/50">
                     요청중
                   </span>
