@@ -24,6 +24,7 @@ import {
 } from "@/src/api/analysis";
 import { getHealthRecords, patchHealthRecord } from "@/src/api/health";
 import { storage } from "@/src/utils/storage";
+import { notificationStorage } from "@/src/utils/notificationStorage";
 import type {
   HealthRecord,
   NotificationSettings,
@@ -176,10 +177,9 @@ export default function MyPageContent() {
     exercise_yn: false,
   });
 
-  const [notifications, setNotifications] = useState<NotificationSettings>({
-    challengeAlert: true,
-    friendCheerAlert: false,
-  });
+  const [notifications, setNotifications] = useState<NotificationSettings>(
+    () => notificationStorage.get()
+  );
 
   const [loadingInit, setLoadingInit] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -383,10 +383,11 @@ export default function MyPageContent() {
   };
 
   const handleNotificationToggle = (key: keyof NotificationSettings) => {
-    setNotifications((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    setNotifications((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      notificationStorage.set(next);
+      return next;
+    });
   };
 
   const saveProfile = async () => {

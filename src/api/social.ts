@@ -6,6 +6,7 @@ export type UserSearchResult = {
   profile_image?: string | null;
   character_stage: number;
   is_friend: boolean;
+  is_requested: boolean;
 };
 
 export type FriendRequest = {

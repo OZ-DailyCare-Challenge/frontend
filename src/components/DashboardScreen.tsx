@@ -19,7 +19,7 @@ import {
   getChallengesWithFallback,
   type Challenge as ApiChallenge,
 } from "@/src/api/challenge";
-import { getFeed, searchUsers, sendFriendRequest, type FeedItem, type UserSearchResult } from "@/src/api/social";
+import { getFeed, getFriendRequests, searchUsers, sendFriendRequest, type FeedItem, type UserSearchResult } from "@/src/api/social";
 
 type ShopTab = "모자" | "옷/스카프" | "액세서리" | "배경";
 
@@ -209,9 +209,19 @@ export default function DashboardScreen({ dashboardData }: Props) {
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set());
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   useEffect(() => {
     getFeed().then(setFeedItems).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const fetchPendingCount = () => {
+      getFriendRequests().then((data) => setPendingRequestCount(data.length)).catch(() => {});
+    };
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -830,11 +840,24 @@ export default function DashboardScreen({ dashboardData }: Props) {
             transition={{ delay: 0.18 }}
             className="rounded-[28px] border border-[#163126]/8 bg-white/82 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.06)]"
           >
-            <div className="mb-5">
-              <p className="text-sm font-semibold text-[#163126]">친구 추가</p>
-              <p className="mt-1 text-xs text-[#163126]/55">
-                친구를 검색하거나 추천 친구를 추가해보세요
-              </p>
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#163126]">친구 추가</p>
+                <p className="mt-1 text-xs text-[#163126]/55">
+                  친구를 검색하거나 추천 친구를 추가해보세요
+                </p>
+              </div>
+              <button
+                onClick={() => router.push("/social")}
+                className="relative flex items-center gap-1 rounded-full border border-[#e7efe9] bg-white px-3 py-1.5 text-xs font-medium text-[#163126] transition hover:bg-[#f4fbf6]"
+              >
+                받은 요청
+                {pendingRequestCount > 0 && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {pendingRequestCount}
+                  </span>
+                )}
+              </button>
             </div>
 
             <div className="flex gap-3">
@@ -886,7 +909,7 @@ export default function DashboardScreen({ dashboardData }: Props) {
 
                   {user.is_friend ? (
                     <span className="text-xs text-[#163126]/40">친구</span>
-                  ) : requestedIds.has(user.id) ? (
+                  ) : user.is_requested || requestedIds.has(user.id) ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-[#163126]/10 bg-white px-3 py-2 text-xs font-semibold text-[#163126]/50">
                       요청됨
                     </span>
