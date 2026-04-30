@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { storage } from "@/src/utils/storage";
 import { getDashboard, createInitialProfile, updateUserProfile } from "@/src/api/user";
 import { createHealthRecord } from "@/src/api/health";
-import { requestUserHealthAnalysis, getAnalysisResult } from "@/src/api/analysis";
+import {
+  getAnalysisResult,
+  migrateGuestAnalysis,
+  requestUserHealthAnalysis,
+} from "@/src/api/analysis";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage, type GuestPendingFlow } from "@/src/utils/guestAnalysisStorage";
 
@@ -60,13 +64,26 @@ function LoginCallbackInner() {
           const savedRecordId = extractRecordId(createdRecord);
           if (!savedRecordId) throw new Error("record_id를 찾을 수 없습니다.");
 
-          const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
-          const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
-          if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
+          const guestTaskId = guestAnalysisStorage.getTaskId();
+          let finalResult: unknown = null;
 
-          sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
+          if (guestTaskId) {
+            try {
+              finalResult = await migrateGuestAnalysis(guestTaskId, savedRecordId);
+            } catch (error) {
+              console.warn("게스트 분석 이관 실패, 회원 분석으로 fallback:", error);
+            }
+          }
 
-          const finalResult = await getAnalysisResult(taskId);
+          if (!finalResult) {
+            const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
+            const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
+            if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
+
+            sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
+            finalResult = await getAnalysisResult(taskId);
+          }
+
           analysisStorage.setResult(finalResult);
           sessionStorage.setItem("health-analysis-result", JSON.stringify(finalResult));
           sessionStorage.setItem("health-flow-complete", "true");
