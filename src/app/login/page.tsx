@@ -103,7 +103,11 @@ function extractHealthRecords(raw: unknown): HealthRecordItem[] {
 function parseGuestMigrationPayload(): GuestMigrationPayload | null {
   try {
     const raw = sessionStorage.getItem(GUEST_MIGRATION_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      const pendingFlow =
+        guestAnalysisStorage.getPendingFlow<GuestMigrationPayload>();
+      return pendingFlow;
+    }
 
     const parsed = JSON.parse(raw) as GuestMigrationPayload;
 

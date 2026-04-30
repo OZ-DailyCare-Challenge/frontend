@@ -9,12 +9,17 @@ import {
   updateUserProfile,
 } from "@/src/api/user";
 import { createHealthRecord } from "@/src/api/health";
-import { migrateGuestAnalysis } from "@/src/api/analysis";
+import {
+  migrateGuestAnalysis,
+  requestUserHealthAnalysis,
+} from "@/src/api/analysis";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import {
   guestAnalysisStorage,
   type GuestPendingFlow,
 } from "@/src/utils/guestAnalysisStorage";
+import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 function extractRecordId(res: any): number | null {
   const value =
@@ -40,6 +45,31 @@ function extractStatus(error: any): number | null {
 function clearGuestMigrationState() {
   guestAnalysisStorage.clearAll();
   sessionStorage.removeItem("guest-profile");
+}
+
+async function fallbackToMemberAnalysis(recordId: number) {
+  const analysisResponse = await requestUserHealthAnalysis(recordId);
+  const taskId =
+    analysisResponse?.task_id ??
+    analysisResponse?.id ??
+    analysisResponse?.data?.task_id;
+
+  if (analysisResponse?.status === "success") {
+    analysisStorage.setResult(analysisResponse);
+    sessionStorage.setItem(
+      "health-analysis-result",
+      JSON.stringify(analysisResponse)
+    );
+    return;
+  }
+
+  if (taskId) {
+    analysisStorage.setTaskStore({ taskId, recordId });
+    sessionStorage.setItem(
+      "health-analysis-task",
+      JSON.stringify({ taskId, recordId })
+    );
+  }
 }
 
 function LoginCallbackInner() {
@@ -107,49 +137,48 @@ function LoginCallbackInner() {
           }
 
           const guestTaskId = guestAnalysisStorage.getTaskId();
+          let migrateSuccess = false;
 
-          if (!guestTaskId) {
-            console.warn(
-              "guest_task_id 없음: 마이그레이션을 건너뛰고 guest flow를 정리합니다."
-            );
-
-            clearGuestMigrationState();
-            router.push(redirectPath);
-            return;
-          }
-
-          try {
-            const migratedResult = await migrateGuestAnalysis(
-              guestTaskId,
-              savedRecordId
-            );
-
-            analysisStorage.setResult(migratedResult);
-            sessionStorage.setItem(
-              "health-analysis-result",
-              JSON.stringify(migratedResult)
-            );
-            sessionStorage.setItem("health-flow-complete", "true");
-
-            clearGuestMigrationState();
-
-            router.push(redirectPath);
-            return;
-          } catch (error: any) {
-            const status = extractStatus(error);
-
-            if (status === 404) {
-              console.warn(
-                "guest 분석 결과가 만료되었거나 존재하지 않아 guest flow를 정리합니다."
+          if (guestTaskId) {
+            try {
+              const migratedResult = await migrateGuestAnalysis(
+                guestTaskId,
+                savedRecordId
               );
 
-              clearGuestMigrationState();
-              router.push(redirectPath);
-              return;
+              if (migratedResult?.status === "success") {
+                analysisStorage.setResult(migratedResult);
+                sessionStorage.setItem(
+                  "health-analysis-result",
+                  JSON.stringify(migratedResult)
+                );
+                migrateSuccess = true;
+              }
+            } catch (error) {
+              console.warn(
+                "게스트 분석 이관 실패, 회원 재분석으로 fallback:",
+                error
+              );
+            }
+          }
+
+          if (!migrateSuccess) {
+            if (!guestTaskId) {
+              console.warn(
+                "guest_task_id 없음: 회원 건강기록 기반 분석으로 fallback합니다."
+              );
             }
 
-            throw error;
+            await fallbackToMemberAnalysis(savedRecordId);
           }
+
+          markHealthFlowComplete();
+          useAccessStore.getState().markAnalysisComplete();
+          await useAccessStore.getState().syncAccessFromServer();
+
+          clearGuestMigrationState();
+          router.push("/result");
+          return;
         } catch (error) {
           console.error("게스트 분석 데이터 회원 전환 실패:", error);
           clearGuestMigrationState();

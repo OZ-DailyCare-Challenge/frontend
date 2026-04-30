@@ -9,6 +9,8 @@ import { createHealthRecord } from "@/src/api/health";
 import { requestUserHealthAnalysis, getAnalysisResult, migrateGuestAnalysis } from "@/src/api/analysis";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { guestAnalysisStorage, type GuestPendingFlow } from "@/src/utils/guestAnalysisStorage";
+import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 function extractRecordId(res: any): number | null {
   const value = res?.record_id ?? res?.id ?? res?.data?.record_id ?? res?.data?.id ?? null;
@@ -93,12 +95,14 @@ function AuthCallbackInner() {
 
             analysisStorage.setResult(finalResult);
             sessionStorage.setItem("health-analysis-result", JSON.stringify(finalResult));
-            sessionStorage.setItem("health-flow-complete", "true");
+            markHealthFlowComplete();
+            useAccessStore.getState().markAnalysisComplete();
+            await useAccessStore.getState().syncAccessFromServer();
 
             guestAnalysisStorage.clearAll();
             sessionStorage.removeItem("guest-profile");
 
-            router.push(redirectPath);
+            router.push("/result");
             return;
           } catch (error) {
             console.error("게스트 분석 데이터 회원 전환 실패:", error);

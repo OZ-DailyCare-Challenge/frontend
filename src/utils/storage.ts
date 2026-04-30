@@ -59,6 +59,14 @@ function removeSessionKeys(keys: string[]) {
   keys.forEach((key) => sessionStorage.removeItem(key));
 }
 
+function removeLocalKeysByPrefix(prefix: string) {
+  if (typeof window === "undefined") return;
+
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => localStorage.removeItem(key));
+}
+
 export const storage = {
   getUser(): UserInfo | null {
     if (typeof window === "undefined") return null;
@@ -324,5 +332,6 @@ export const storage = {
       SESSION_KEYS.healthFlowComplete,
       SESSION_KEYS.healthAnalysisTask,
     ]);
+    removeLocalKeysByPrefix("challenge-list-cache:");
   },
 };

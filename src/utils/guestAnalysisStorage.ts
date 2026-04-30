@@ -3,6 +3,7 @@ const RESULT_KEY = "guest_analysis_result";
 const PENDING_FLOW_KEY = "guest_analysis_pending_flow";
 const POST_LOGIN_REDIRECT_KEY = "guest_post_login_redirect";
 const MIGRATION_NEEDED_KEY = "guest_migration_needed";
+const LEGACY_CHALLENGE_STORE_KEY = "myhealthbuddy-challenge-store";
 
 export type GuestStoredHealthPayload = {
   systolic_bp: number;
@@ -53,13 +54,64 @@ function safeLocalRemove(key: string) {
   localStorage.removeItem(key);
 }
 
+function getLegacyGuestState(): Record<string, unknown> | null {
+  const raw = safeLocalGet(LEGACY_CHALLENGE_STORE_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+    return parsed?.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function clearLegacyGuestState() {
+  const raw = safeLocalGet(LEGACY_CHALLENGE_STORE_KEY);
+  if (!raw) return;
+
+  try {
+    const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+    if (!parsed?.state) return;
+
+    delete parsed.state.guest_analysis_task_id;
+    delete parsed.state.guest_analysis_result;
+    delete parsed.state.guest_analysis_pending_flow;
+    delete parsed.state.pending_flow;
+    delete parsed.state.guest_migration_needed;
+    delete parsed.state.guest_post_login_redirect;
+
+    safeLocalSet(LEGACY_CHALLENGE_STORE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore malformed legacy persisted state.
+  }
+}
+
+function parseMaybeJson<T>(value: unknown): T | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return value as T;
+    }
+  }
+
+  return value as T;
+}
+
 export const guestAnalysisStorage = {
   setTaskId(taskId: string) {
     safeLocalSet(TASK_ID_KEY, taskId);
   },
 
   getTaskId(): string | null {
-    return safeLocalGet(TASK_ID_KEY);
+    return (
+      safeLocalGet(TASK_ID_KEY) ??
+      (getLegacyGuestState()?.guest_analysis_task_id as string | undefined) ??
+      null
+    );
   },
 
   clearTaskId() {
@@ -72,14 +124,15 @@ export const guestAnalysisStorage = {
 
   getResult<T = unknown>(): T | null {
     const raw = safeLocalGet(RESULT_KEY);
-    if (!raw) return null;
-
-    try {
-      return JSON.parse(raw) as T;
-    } catch (error) {
-      console.error("guest_analysis_result 파싱 실패:", error);
-      return null;
+    if (raw) {
+      try {
+        return JSON.parse(raw) as T;
+      } catch (error) {
+        console.error("guest_analysis_result 파싱 실패:", error);
+      }
     }
+
+    return parseMaybeJson<T>(getLegacyGuestState()?.guest_analysis_result);
   },
 
   clearResult() {
@@ -92,14 +145,19 @@ export const guestAnalysisStorage = {
 
   getPendingFlow<T = GuestPendingFlow>(): T | null {
     const raw = safeLocalGet(PENDING_FLOW_KEY);
-    if (!raw) return null;
-
-    try {
-      return JSON.parse(raw) as T;
-    } catch (error) {
-      console.error("guest_analysis_pending_flow 파싱 실패:", error);
-      return null;
+    if (raw) {
+      try {
+        return JSON.parse(raw) as T;
+      } catch (error) {
+        console.error("guest_analysis_pending_flow 파싱 실패:", error);
+      }
     }
+
+    const legacyState = getLegacyGuestState();
+    return (
+      parseMaybeJson<T>(legacyState?.pending_flow) ??
+      parseMaybeJson<T>(legacyState?.guest_analysis_pending_flow)
+    );
   },
 
   clearPendingFlow() {
@@ -123,7 +181,18 @@ export const guestAnalysisStorage = {
   },
 
   isMigrationNeeded(): boolean {
-    return safeLocalGet(MIGRATION_NEEDED_KEY) === "true";
+    const officialValue = safeLocalGet(MIGRATION_NEEDED_KEY);
+    if (officialValue) return officialValue === "true";
+
+    const legacyState = getLegacyGuestState();
+    const legacyValue = legacyState?.guest_migration_needed;
+
+    if (legacyValue === true || legacyValue === "true") return true;
+
+    return Boolean(
+      (legacyState?.pending_flow || legacyState?.guest_analysis_pending_flow) &&
+        legacyState?.guest_analysis_task_id
+    );
   },
 
   clearMigrationNeeded() {
@@ -140,5 +209,6 @@ export const guestAnalysisStorage = {
     this.clearTaskId();
     this.clearResult();
     this.clearGuestFlowMeta();
+    clearLegacyGuestState();
   },
 };
