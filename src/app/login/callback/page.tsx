@@ -3,19 +3,43 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { storage } from "@/src/utils/storage";
-import { getDashboard, createInitialProfile, updateUserProfile } from "@/src/api/user";
-import { createHealthRecord } from "@/src/api/health";
 import {
-  getAnalysisResult,
-  migrateGuestAnalysis,
-  requestUserHealthAnalysis,
-} from "@/src/api/analysis";
+  getDashboard,
+  createInitialProfile,
+  updateUserProfile,
+} from "@/src/api/user";
+import { createHealthRecord } from "@/src/api/health";
+import { migrateGuestAnalysis } from "@/src/api/analysis";
 import { analysisStorage } from "@/src/utils/analysisStorage";
-import { guestAnalysisStorage, type GuestPendingFlow } from "@/src/utils/guestAnalysisStorage";
+import {
+  guestAnalysisStorage,
+  type GuestPendingFlow,
+} from "@/src/utils/guestAnalysisStorage";
 
 function extractRecordId(res: any): number | null {
-  const value = res?.record_id ?? res?.id ?? res?.data?.record_id ?? res?.data?.id ?? null;
-  return typeof value === "number" ? value : null;
+  const value =
+    res?.record_id ??
+    res?.id ??
+    res?.data?.record_id ??
+    res?.data?.id ??
+    null;
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function extractStatus(error: any): number | null {
+  const status = error?.response?.status ?? error?.status ?? null;
+
+  if (typeof status === "number") return status;
+
+  const matchedStatus = error?.message?.match(/:\s*(\d{3})\s/)?.[1];
+  return matchedStatus ? Number(matchedStatus) : null;
+}
+
+function clearGuestMigrationState() {
+  guestAnalysisStorage.clearAll();
+  sessionStorage.removeItem("guest-profile");
 }
 
 function LoginCallbackInner() {
@@ -37,11 +61,18 @@ function LoginCallbackInner() {
       }
 
       storage.setAccessToken(accessToken);
-      storage.setUser({ id: userId ? Number(userId) : undefined, email: email || undefined, name: name || undefined, picture: picture || undefined });
+      storage.setUser({
+        id: userId ? Number(userId) : undefined,
+        email: email || undefined,
+        name: name || undefined,
+        picture: picture || undefined,
+      });
 
-      const pendingFlow = guestAnalysisStorage.getPendingFlow<GuestPendingFlow>();
+      const pendingFlow =
+        guestAnalysisStorage.getPendingFlow<GuestPendingFlow>();
       const shouldMigrate = guestAnalysisStorage.isMigrationNeeded();
-      const redirectPath = guestAnalysisStorage.getPostLoginRedirect() || "/dashboard";
+      const redirectPath =
+        guestAnalysisStorage.getPostLoginRedirect() || "/dashboard";
 
       if (pendingFlow && shouldMigrate) {
         try {
@@ -52,49 +83,76 @@ function LoginCallbackInner() {
               birth_year: pendingFlow.birthYear,
             });
           } catch (error: any) {
-            const status = error?.response?.status ?? error?.status ?? (error?.message?.match(/:\s*(\d{3})\s/)?.[1] ? parseInt(error.message.match(/:\s*(\d{3})\s/)[1]) : null);
+            const status = extractStatus(error);
+
             if (status === 409) {
-              await updateUserProfile({ nickname: pendingFlow.nickname, birth_year: pendingFlow.birthYear });
+              await updateUserProfile({
+                nickname: pendingFlow.nickname,
+                birth_year: pendingFlow.birthYear,
+              });
             } else {
               throw error;
             }
           }
 
-          const createdRecord = await createHealthRecord(pendingFlow.healthPayload);
+          const createdRecord = await createHealthRecord(
+            pendingFlow.healthPayload
+          );
+
           const savedRecordId = extractRecordId(createdRecord);
-          if (!savedRecordId) throw new Error("record_id를 찾을 수 없습니다.");
+
+          if (!savedRecordId) {
+            console.error("record_id 추출 실패:", createdRecord);
+            throw new Error("record_id를 찾을 수 없습니다.");
+          }
 
           const guestTaskId = guestAnalysisStorage.getTaskId();
-          let finalResult: unknown = null;
 
-          if (guestTaskId) {
-            try {
-              finalResult = await migrateGuestAnalysis(guestTaskId, savedRecordId);
-            } catch (error) {
-              console.warn("게스트 분석 이관 실패, 회원 분석으로 fallback:", error);
+          if (!guestTaskId) {
+            console.warn(
+              "guest_task_id 없음: 마이그레이션을 건너뛰고 guest flow를 정리합니다."
+            );
+
+            clearGuestMigrationState();
+            router.push(redirectPath);
+            return;
+          }
+
+          try {
+            const migratedResult = await migrateGuestAnalysis(
+              guestTaskId,
+              savedRecordId
+            );
+
+            analysisStorage.setResult(migratedResult);
+            sessionStorage.setItem(
+              "health-analysis-result",
+              JSON.stringify(migratedResult)
+            );
+            sessionStorage.setItem("health-flow-complete", "true");
+
+            clearGuestMigrationState();
+
+            router.push(redirectPath);
+            return;
+          } catch (error: any) {
+            const status = extractStatus(error);
+
+            if (status === 404) {
+              console.warn(
+                "guest 분석 결과가 만료되었거나 존재하지 않아 guest flow를 정리합니다."
+              );
+
+              clearGuestMigrationState();
+              router.push(redirectPath);
+              return;
             }
+
+            throw error;
           }
-
-          if (!finalResult) {
-            const analysisResponse = await requestUserHealthAnalysis(savedRecordId);
-            const taskId = analysisResponse?.task_id ?? analysisResponse?.id ?? analysisResponse?.data?.task_id ?? null;
-            if (!taskId) throw new Error("task_id를 찾을 수 없습니다.");
-
-            sessionStorage.setItem("health-analysis-task", JSON.stringify({ taskId, recordId: savedRecordId }));
-            finalResult = await getAnalysisResult(taskId);
-          }
-
-          analysisStorage.setResult(finalResult);
-          sessionStorage.setItem("health-analysis-result", JSON.stringify(finalResult));
-          sessionStorage.setItem("health-flow-complete", "true");
-
-          guestAnalysisStorage.clearAll();
-          sessionStorage.removeItem("guest-profile");
-
-          router.push(redirectPath);
-          return;
         } catch (error) {
           console.error("게스트 분석 데이터 회원 전환 실패:", error);
+          clearGuestMigrationState();
         }
       }
 
@@ -107,7 +165,7 @@ function LoginCallbackInner() {
     };
 
     handleCallback();
-  }, []);
+  }, [router, searchParams]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -118,11 +176,13 @@ function LoginCallbackInner() {
 
 export default function LoginCallbackPage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">로그인 처리 중...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-gray-500">로그인 처리 중...</p>
+        </div>
+      }
+    >
       <LoginCallbackInner />
     </Suspense>
   );
