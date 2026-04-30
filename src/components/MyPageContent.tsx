@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   ChevronLeft,
@@ -151,6 +151,9 @@ export default function MyPageContent() {
   const [selectedAnalysisRecordId, setSelectedAnalysisRecordId] = useState<
     number | null
   >(null);
+  const [selectedAnalysisId, setSelectedAnalysisId] = useState<number | null>(
+    null
+  );
 
   const [activeView, setActiveView] = useState<MyPageView>("overview");
 
@@ -186,6 +189,7 @@ export default function MyPageContent() {
   const [withdrawReason, setWithdrawReason] = useState<WithdrawReason>("");
   const [withdrawDetail, setWithdrawDetail] = useState("");
   const [loadError, setLoadError] = useState("");
+  const analysisDetailRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -320,7 +324,10 @@ export default function MyPageContent() {
     typeof profile?.current_point === "number" ? profile.current_point : 0;
 
   const latestAnalysis = analysisHistory[0] ?? null;
-  const selectedAnalysis = selectedAnalysisGroup[0];
+  const selectedAnalysis =
+    selectedAnalysisGroup.find((item) => item.id === selectedAnalysisId) ??
+    selectedAnalysisGroup[0] ??
+    null;
   const missions = useMemo(() => {
     if (!selectedAnalysis?.ai_missions) return [];
 
@@ -338,6 +345,31 @@ export default function MyPageContent() {
 
     return [];
   }, [selectedAnalysis]);
+
+  useEffect(() => {
+    if (
+      activeView !== "analysis" ||
+      loadingAnalysisDetail ||
+      selectedAnalysisRecordId == null ||
+      !selectedAnalysis
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      analysisDetailRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeView,
+    loadingAnalysisDetail,
+    selectedAnalysisRecordId,
+    selectedAnalysis,
+  ]);
 
   const handleProfileChange = (key: keyof ProfileForm, value: string) => {
     setProfileForm((prev) => ({ ...prev, [key]: value }));
@@ -502,10 +534,22 @@ export default function MyPageContent() {
     }
   };
 
-  const handleOpenAnalysisDetail = async (recordId: number) => {
+  const handleOpenAnalysisDetail = async (
+    recordId: number,
+    analysisId: number
+  ) => {
+    if (
+      selectedAnalysisRecordId === recordId &&
+      selectedAnalysisGroup.length > 0
+    ) {
+      setSelectedAnalysisId(analysisId);
+      return;
+    }
+
     try {
       setLoadingAnalysisDetail(true);
       setSelectedAnalysisRecordId(recordId);
+      setSelectedAnalysisId(analysisId);
 
       const response = await getAnalysisResultsByRecord(recordId);
       setSelectedAnalysisGroup(response.items ?? []);
@@ -514,6 +558,7 @@ export default function MyPageContent() {
       alert("해당 건강 기록의 분석 결과를 불러오지 못했어요.");
       setSelectedAnalysisGroup([]);
       setSelectedAnalysisRecordId(null);
+      setSelectedAnalysisId(null);
     } finally {
       setLoadingAnalysisDetail(false);
     }
@@ -866,7 +911,9 @@ export default function MyPageContent() {
                 <button
                   key={`${item.id}-${item.record_id}`}
                   type="button"
-                  onClick={() => handleOpenAnalysisDetail(item.record_id)}
+                  onClick={() =>
+                    handleOpenAnalysisDetail(item.record_id, item.id)
+                  }
                   className="w-full rounded-[22px] border border-[#163126]/8 bg-[#f9fcfa] p-5 text-left transition hover:border-[#bfe3c9] hover:bg-white"
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -899,7 +946,7 @@ export default function MyPageContent() {
           )}
         </SectionCard>
 
-        <div className="mt-6">
+        <div ref={analysisDetailRef} className="mt-6">
           <SectionCard
             icon={<Sparkles size={18} />}
             title="선택한 기록 상세"

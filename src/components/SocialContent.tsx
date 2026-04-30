@@ -133,6 +133,12 @@ export default function SocialContent() {
 
       showMessage("친구 요청을 보냈어요.");
     } catch {
+      setPendingRequestIds((prev) => {
+        const next = new Set(prev);
+        next.add(userId);
+        return next;
+      });
+
       showMessage("이미 친구이거나 진행 중인 요청이 있어요.");
     }
   };

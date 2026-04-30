@@ -16,6 +16,7 @@ import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { storage } from "@/src/utils/storage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import { markHealthFlowComplete } from "@/src/utils/health-flow";
+import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useAccessStore } from "@/src/store/access-store";
 
 const messages = [
@@ -61,6 +62,7 @@ export default function AnalyzingPage() {
   const finishedRef = useRef(false);
 
   useEffect(() => {
+    perfMark("analyzing:mounted");
     mountedRef.current = true;
 
     const startTimer = setTimeout(() => {
@@ -134,6 +136,12 @@ export default function AnalyzingPage() {
 
       finishedRef.current = true;
       clearRetryTimer();
+      perfMark("result:navigate");
+      perfMeasure(
+        "analyzing-to-result:navigate",
+        "analyzing:mounted",
+        "result:navigate"
+      );
       router.replace("/result");
     };
 
@@ -194,8 +202,11 @@ export default function AnalyzingPage() {
       const isGuest = !token;
 
       inFlightRef.current = true;
+      perfMark("analysis:poll:start");
 
       try {
+        perfMark("analysis:request:start");
+
         if (!isGuest) {
           const resolved = await tryResolveLoggedInResult();
 
@@ -254,6 +265,14 @@ export default function AnalyzingPage() {
         );
         scheduleRetry(3500);
       } finally {
+        perfMark("analysis:request:end");
+        perfMeasure(
+          "analysis:request",
+          "analysis:request:start",
+          "analysis:request:end"
+        );
+        perfMark("analysis:poll:end");
+        perfMeasure("analysis:poll", "analysis:poll:start", "analysis:poll:end");
         inFlightRef.current = false;
       }
     };

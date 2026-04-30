@@ -26,6 +26,7 @@ import {
   clearHealthFlowComplete,
   markHealthFlowComplete,
 } from "@/src/utils/health-flow";
+import { perfMark } from "@/src/utils/perf";
 import { useAccessStore } from "@/src/store/access-store";
 
 type GuestMigrationPayload = {
@@ -173,6 +174,8 @@ export default function LoginPage() {
     useState<LoginResponseWithWithdraw | null>(null);
 
   useEffect(() => {
+    perfMark("login:mounted");
+
     const token = storage.getAccessToken();
 
     if (!token) {
@@ -186,6 +189,13 @@ export default function LoginPage() {
   }, []);
 
   const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
+
+  useEffect(() => {
+    if (!redirectUri) return;
+
+    perfMark("login:google-script-ready");
+    perfMark("login:ready");
+  }, [redirectUri]);
 
   const migrateGuestDataToMember = async () => {
     const guestPayload = parseGuestMigrationPayload();
