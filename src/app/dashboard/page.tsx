@@ -176,6 +176,19 @@ const buildDashboardViewData = (
   };
 };
 
+const mockDashboardData: DashboardViewData = {
+  nickname: "이형석",
+  point: 1280,
+  healthScore: 72,
+  heartAge: 37,
+  actualAge: 30,
+  streak: 3,
+  characterStage: 2,
+  challengeProgress: 62,
+  nextUpdateDays: 2,
+  riskTags: ["혈압 관리 필요", "수면 습관 개선", "운동 실천 중"],
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
@@ -195,6 +208,16 @@ export default function DashboardPage() {
       let ready = false;
 
       try {
+        const isMockPreview =
+          process.env.NODE_ENV === "development" &&
+          new URLSearchParams(window.location.search).get("mock") === "1";
+
+        if (isMockPreview) {
+          setDashboardData(mockDashboardData);
+          ready = true;
+          return;
+        }
+
         const token = storage.getAccessToken();
 
         if (!token) {
