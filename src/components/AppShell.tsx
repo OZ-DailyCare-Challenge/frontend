@@ -78,7 +78,7 @@ export default function AppShell({
     <div className="min-h-screen bg-[#f7faf8]">
       <Sidebar onRequireLogin={onRequireLogin} />
 
-      <div className="min-h-screen md:pl-[260px]">
+      <div className="min-h-screen min-w-0 overflow-x-hidden lg:pl-[260px]">
         <div className="flex min-h-screen min-w-0 flex-col">
           <header className="sticky top-0 z-20 border-b border-[#e7efe9] bg-[#f7faf8]/88 backdrop-blur-md">
             <div className="flex items-center justify-between px-4 py-4 md:px-6 xl:px-8">
@@ -120,7 +120,7 @@ export default function AppShell({
             )}
           </header>
 
-          <main className="min-w-0 flex-1 px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-8 xl:px-8 xl:py-8">
+          <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-8 xl:px-8 xl:py-8">
             {title ? (
               <div className="mb-6">
                 <h1 className="text-2xl font-bold text-[#163126] md:text-3xl">
