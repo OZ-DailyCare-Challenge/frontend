@@ -27,6 +27,7 @@ import {
   waitExerciseVerificationCompletion,
 } from "@/src/api/exercise";
 import { notificationStorage } from "@/src/utils/notificationStorage";
+import { storage } from "@/src/utils/storage";
 
 type ChallengeStatus = "in_progress" | "done" | "locked";
 type VerificationType = "check" | "number" | "photo";
@@ -50,6 +51,47 @@ type ChallengeLogPayload =
       verification_type: "cv";
       cv_result_id?: number;
     };
+
+function getNestedValue(source: unknown, path: string[]) {
+  return path.reduce<unknown>((current, key) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, source);
+}
+
+function normalizeCvResultId(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) return numericValue;
+  }
+
+  return undefined;
+}
+
+function extractCvResultId(verifyResult: unknown): number | undefined {
+  const candidates = [
+    getNestedValue(verifyResult, ["cv_result_id"]),
+    getNestedValue(verifyResult, ["result_id"]),
+    getNestedValue(verifyResult, ["id"]),
+    getNestedValue(verifyResult, ["data", "cv_result_id"]),
+    getNestedValue(verifyResult, ["data", "result_id"]),
+    getNestedValue(verifyResult, ["data", "id"]),
+    getNestedValue(verifyResult, ["result", "cv_result_id"]),
+    getNestedValue(verifyResult, ["result", "result_id"]),
+    getNestedValue(verifyResult, ["result", "id"]),
+    getNestedValue(verifyResult, ["result", "data", "cv_result_id"]),
+    getNestedValue(verifyResult, ["result", "data", "result_id"]),
+    getNestedValue(verifyResult, ["result", "data", "id"]),
+  ];
+
+  for (const candidate of candidates) {
+    const id = normalizeCvResultId(candidate);
+    if (id !== undefined) return id;
+  }
+
+  return undefined;
+}
 
 type ChallengeItem = {
   id: number | string;
@@ -87,6 +129,18 @@ type StoredActiveChallengeMap = Record<
 
 const dayLabels = Array.from({ length: 30 }, (_, i) => `${i + 1}일`);
 const ACTIVE_CHALLENGES_STORAGE_KEY = "active-user-challenges-v1";
+
+function getChallengeCacheKey() {
+  const user = storage.getUser();
+  const userKey = user?.id ?? user?.email ?? "guest";
+
+  return `challenge-list-cache:${userKey}`;
+}
+
+function removeCurrentChallengeCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(getChallengeCacheKey());
+}
 
 function getStoredActiveChallengeMap(): StoredActiveChallengeMap {
   if (typeof window === "undefined") return {};
@@ -323,8 +377,23 @@ export default function ChallengeScreen() {
 
   useEffect(() => {
     const init = async () => {
+      const cacheKey = getChallengeCacheKey();
+
       try {
         setLoading(true);
+
+        if (typeof window !== "undefined") {
+          const cached = localStorage.getItem(cacheKey);
+
+          if (cached) {
+            try {
+              setBaseChallenges(JSON.parse(cached) as ChallengeItem[]);
+              setLoading(false);
+            } catch {
+              localStorage.removeItem(cacheKey);
+            }
+          }
+        }
 
         const [challengeResponse, recommendResponse] = await Promise.allSettled([
           getChallengesWithFallback(),
@@ -338,6 +407,10 @@ export default function ChallengeScreen() {
             (challenge) => mapApiChallengeToUi(challenge, activeMap)
           );
           setBaseChallenges(mapped);
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(cacheKey, JSON.stringify(mapped));
+          }
         } else {
           console.error("챌린지 목록 조회 실패:", challengeResponse.reason);
           setBaseChallenges([]);
@@ -456,6 +529,9 @@ export default function ChallengeScreen() {
     );
 
     setBaseChallenges(mapped);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getChallengeCacheKey(), JSON.stringify(mapped));
+    }
     return mapped;
   };
 
@@ -485,6 +561,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       persistChallengeItemToStorage(updatedChallenge);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -539,6 +616,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       persistChallengeItemToStorage(updatedChallenge);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -598,6 +676,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       removeChallengeItemFromStorage(selectedChallenge.challengeId);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -635,9 +714,13 @@ export default function ChallengeScreen() {
         input_value: inputValue ?? "",
       };
     } else if (verificationType === "cv") {
+      if (typeof cvResultId !== "number") {
+        throw new Error("cv_result_id를 찾을 수 없습니다.");
+      }
+
       payload = {
         verification_type: "cv",
-        ...(typeof cvResultId === "number" ? { cv_result_id: cvResultId } : {}),
+        cv_result_id: cvResultId,
       };
     } else {
       payload = {
@@ -668,6 +751,7 @@ export default function ChallengeScreen() {
     );
     updateBaseChallenge(updatedChallenge);
     persistChallengeItemToStorage(updatedChallenge);
+    removeCurrentChallengeCache();
     triggerCardPulse(challenge.id);
   };
 
@@ -727,14 +811,7 @@ export default function ChallengeScreen() {
 
       console.log("exercise verify result:", verifyResult);
 
-      const verifyResultRecord = verifyResult as Record<string, unknown>;
-
-      const resolvedCvResultId =
-        typeof verifyResultRecord.cv_result_id === "number"
-          ? verifyResultRecord.cv_result_id
-          : typeof verifyResultRecord.result_id === "number"
-          ? verifyResultRecord.result_id
-          : undefined;
+      const resolvedCvResultId = extractCvResultId(verifyResult);
 
       await submitChallengeLog(
         selectedChallenge,

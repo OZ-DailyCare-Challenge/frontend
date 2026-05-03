@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { storage } from "@/src/utils/storage";
 import { getDashboard } from "@/src/api/user";
 import { getHealthRecords } from "@/src/api/health";
+import { isHealthFlowComplete } from "@/src/utils/health-flow";
 
 type UserFlowState = {
   isLoggedIn: boolean;
@@ -39,15 +40,18 @@ export function useUserFlow() {
 
       try {
         const dashboard = await getDashboard();
-        const records = await getHealthRecords();
+        const recordsResponse = await getHealthRecords();
+        const records = Array.isArray(recordsResponse)
+          ? recordsResponse
+          : recordsResponse?.records ?? [];
 
         setState({
           isLoggedIn: true,
           hasInitialProfile: Boolean(
             dashboard?.nickname && dashboard?.gender && dashboard?.birth_year
           ),
-          hasHealthRecord: Array.isArray(records) && records.length > 0,
-          hasAnalysisResult: Boolean(dashboard?.risk_score || dashboard?.health_score),
+          hasHealthRecord: records.length > 0,
+          hasAnalysisResult: isHealthFlowComplete(),
           isLoading: false,
         });
       } catch (error) {

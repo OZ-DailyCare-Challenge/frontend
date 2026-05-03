@@ -588,6 +588,9 @@ export default function MyPageContent() {
       await logoutUser();
 
       localStorage.removeItem("myhealthbuddy-challenge-store");
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("challenge-list-cache:"))
+        .forEach((key) => localStorage.removeItem(key));
       sessionStorage.removeItem("health-flow-complete");
       sessionStorage.removeItem("health-analysis-task");
       sessionStorage.removeItem("health-analysis-result");
