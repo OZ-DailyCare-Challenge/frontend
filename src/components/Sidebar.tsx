@@ -164,7 +164,9 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
   };
 
   const isActive = (href: string) => {
-    if (href === "/dashboard") return pathname === "/dashboard";
+    if (href === "/dashboard") {
+      return pathname === "/dashboard" || pathname === "/social/feed";
+    }
 
     if (href === "/input") {
       return pathname === "/input" || pathname.startsWith("/input/");
@@ -186,7 +188,7 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col border-r border-[#163126]/8 bg-[#f7faf8] md:flex">
+    <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col border-r border-[#163126]/8 bg-[#f7faf8] lg:flex">
       <div className="border-b border-[#163126]/8 px-6 py-5">
         <button
           type="button"
