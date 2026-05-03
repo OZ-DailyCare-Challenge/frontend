@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import AppShell from "@/src/components/AppShell";
 import { storage } from "@/src/utils/storage";
 
@@ -13,6 +15,33 @@ type FeedItem = {
   current_streak: number;
   created_at: string;
 };
+
+const mockFeedItems: FeedItem[] = [
+  {
+    user_id: 1,
+    nickname: "이형석",
+    challenge_title: "물 2L 마시기",
+    log_date: "2026-05-01",
+    current_streak: 3,
+    created_at: "2026-05-01T09:00:00",
+  },
+  {
+    user_id: 2,
+    nickname: "김민지",
+    challenge_title: "30분 걷기",
+    log_date: "2026-05-01",
+    current_streak: 5,
+    created_at: "2026-05-01T08:30:00",
+  },
+  {
+    user_id: 3,
+    nickname: "최지영",
+    challenge_title: "저염식 식단 지키기",
+    log_date: "2026-05-01",
+    current_streak: 2,
+    created_at: "2026-05-01T07:40:00",
+  },
+];
 
 async function getFeed(): Promise<FeedItem[]> {
   const accessToken = storage.getAccessToken();
@@ -27,11 +56,22 @@ async function getFeed(): Promise<FeedItem[]> {
 }
 
 export default function SocialFeedPage() {
+  const router = useRouter();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cheered, setCheered] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    const isMockPreview =
+      process.env.NODE_ENV === "development" &&
+      new URLSearchParams(window.location.search).get("mock") === "1";
+
+    if (isMockPreview) {
+      setItems(mockFeedItems);
+      setLoading(false);
+      return;
+    }
+
     getFeed()
       .then(setItems)
       .catch(() => {})
@@ -43,8 +83,28 @@ export default function SocialFeedPage() {
   };
 
   return (
-    <AppShell title="함께하기">
-      <div className="mx-auto max-w-xl space-y-3">
+    <AppShell title="친구 활동">
+      <div className="mx-auto w-full max-w-3xl space-y-5">
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="inline-flex items-center gap-2 rounded-full border border-[#dce9e0] bg-white px-4 py-2.5 text-sm font-semibold text-[#163126]/72 transition hover:bg-[#f4fbf6] hover:text-[#163126]"
+        >
+          <ArrowLeft size={16} />
+          대시보드
+        </button>
+
+        <div className="rounded-[28px] border border-[#163126]/8 bg-white px-5 py-5 shadow-[0_18px_50px_rgba(46,125,91,0.06)]">
+          <div>
+            <p className="text-sm font-semibold text-[#2E7D5B]">
+              친구 활동 전체보기
+            </p>
+            <p className="mt-2 text-sm text-[#163126]/58">
+              친구들의 챌린지 인증 소식을 한 번에 확인해보세요.
+            </p>
+          </div>
+        </div>
+
         {loading && (
           <p className="py-10 text-center text-sm text-[#163126]/40">불러오는 중...</p>
         )}
