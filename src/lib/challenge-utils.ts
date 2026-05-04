@@ -24,8 +24,9 @@ export function getTodayChecklistFromChallenges(challenges: Challenge[]) {
     .filter((c) => c.status === "in_progress")
     .slice(0, 4)
     .map((c) => {
+      const submittedToday = c.lastSubmittedDate === getTodayKey();
       const todayIndex = Math.max(c.currentDay - 1, 0);
-      const todayDone = c.logs[todayIndex] === true;
+      const todayDone = submittedToday || c.logs[todayIndex] === true;
 
       return {
         id: c.id,
