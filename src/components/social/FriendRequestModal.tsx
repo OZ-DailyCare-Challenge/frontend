@@ -8,6 +8,7 @@ import {
   rejectFriendRequest,
   type FriendRequest,
 } from "@/src/api/social";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type Props = {
   open: boolean;
@@ -131,17 +132,12 @@ export default function FriendRequestModal({
                   className="flex items-center justify-between gap-3 rounded-[22px] border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#eef7e8] text-sm font-bold text-[#2E7D5B]">
-                      {request.requester_profile_image ? (
-                        <img
-                          src={request.requester_profile_image}
-                          alt={request.requester_nickname}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        request.requester_nickname[0]
-                      )}
-                    </div>
+                    <ProfileNameAvatar
+                      name={request.requester_nickname}
+                      image={request.requester_profile_image}
+                      className="h-11 w-11"
+                      textClassName="text-[10px]"
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-[#163126]">
                         {request.requester_nickname}

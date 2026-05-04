@@ -117,7 +117,8 @@ const getChallengeSummaryFromStore = () => {
 const buildDashboardViewData = (
   dashboard: any,
   latestRecord: HealthRecordLike | null,
-  latestAnalysis: AnalysisHistoryLike | null
+  latestAnalysis: AnalysisHistoryLike | null,
+  storedUser: any = null
 ): DashboardViewData => {
   const currentYear = new Date().getFullYear();
 
@@ -155,7 +156,12 @@ const buildDashboardViewData = (
   );
 
   const nickname =
-    dashboard?.nickname ?? dashboard?.name ?? dashboard?.user?.nickname ?? "버디";
+    dashboard?.nickname ??
+    dashboard?.user?.nickname ??
+    storedUser?.nickname ??
+    dashboard?.name ??
+    storedUser?.name ??
+    "버디";
 
   const characterStage = Number(dashboard?.character_stage ?? 1);
   const nextUpdateDays = Number(dashboard?.next_update_days ?? 2);
@@ -193,6 +199,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
 
+  const [isMock, setIsMock] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardViewData | null>(
     null
@@ -203,6 +210,18 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    setIsMock(new URLSearchParams(window.location.search).get("mock") === "1");
+  }, []);
+
+  useEffect(() => {
+    if (isMock === null) return;
+
+    if (isMock) {
+      setDashboardData(mockDashboardData);
+      setChecking(false);
+      return;
+    }
+
     const init = async () => {
       let dataStarted = false;
       let ready = false;
@@ -253,7 +272,8 @@ export default function DashboardPage() {
         const viewData = buildDashboardViewData(
           dashboardRes,
           latestRecord,
-          latestAnalysis
+          latestAnalysis,
+          storage.getUser?.()
         );
 
         setDashboardData(viewData);
@@ -300,9 +320,9 @@ export default function DashboardPage() {
     return () => {
       unsubscribe();
     };
-  }, [router, hydrated]);
+  }, [router, hydrated, isMock]);
 
-  if (checking || !hydrated) {
+  if (checking || isMock === null || (!hydrated && !isMock)) {
     return (
       <AppShell>
         <div className="flex min-h-[60vh] items-center justify-center rounded-[32px] border border-white/40 bg-white/60 text-[#163126]/60 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl">
@@ -316,7 +336,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <DashboardScreen dashboardData={dashboardData} />
+      <DashboardScreen dashboardData={dashboardData} mock={isMock === true} />
     </AppShell>
   );
 }

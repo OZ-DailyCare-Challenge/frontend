@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useGoogleLogin } from "@react-oauth/google";
+import { HeartPulse, LockKeyhole } from "lucide-react";
 
 import Header from "@/src/components/Header";
 import { loginWithGoogle } from "@/src/api/auth";
@@ -491,17 +492,16 @@ export default function LoginPage() {
 
   return (
     <>
-      <main className="relative min-h-screen overflow-hidden text-[#163126]">
+      <main className="relative min-h-screen overflow-hidden bg-white text-[#163126]">
         <Header visible />
 
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: "url('/images/skygreen.png')" }}
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0.34)_100%)]" />
-
-        <div className="pointer-events-none absolute left-[-8%] top-[8%] h-[26vw] w-[26vw] rounded-full bg-white/18 blur-3xl" />
-        <div className="pointer-events-none absolute right-[-6%] bottom-[-8%] h-[24vw] w-[24vw] rounded-full bg-[#d9f3df]/28 blur-3xl" />
+        <div className="absolute inset-0">
+          <img
+            src="/images/buddy-background.png"
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        </div>
 
         <div className="relative z-10 flex min-h-screen items-center justify-center px-6 pt-[88px]">
           <motion.div
@@ -510,16 +510,31 @@ export default function LoginPage() {
             transition={{ duration: 0.6, ease: "easeOut" }}
             className="w-full max-w-[620px]"
           >
-            <div className="relative overflow-hidden rounded-[40px] border border-white/40 bg-white/55 px-10 py-12 shadow-[0_24px_60px_rgba(22,49,38,0.10)] backdrop-blur-2xl md:px-14 md:py-14">
-              <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.9),transparent)]" />
-              <div className="pointer-events-none absolute inset-x-10 top-0 h-24 rounded-full bg-white/18 blur-2xl" />
-
+            <div className="relative overflow-hidden rounded-[36px] border border-white/70 bg-white/88 px-9 py-10 shadow-[0_28px_70px_rgba(22,49,38,0.10)] backdrop-blur-xl md:px-14 md:py-12">
               <div className="flex flex-col items-center text-center">
-                <p className="text-[13px] font-semibold tracking-[0.50em] text-[#7eb696]">
-                  MyHealthBuddy
-                </p>
+                <div className="flex flex-col items-center">
+                  <img
+                    src="/images/buddy-heart.png"
+                    alt=""
+                    className="h-[132px] w-[132px] object-contain drop-shadow-[0_12px_24px_rgba(22,49,38,0.08)]"
+                  />
+                  <h1 className="mt-4 text-[34px] font-black leading-tight text-[#1f5c45] md:text-[40px]">
+                    MyHealthBuddy
+                  </h1>
+                  <p className="mt-2 text-[18px] font-black text-[#2E7D5B]">
+                    건강한 하루를 함께 기록해요
+                  </p>
+                </div>
 
-                <p className="mt-8 text-[17px] leading-8 text-[#70867c]">
+                <div className="my-8 flex w-full items-center gap-4">
+                  <span className="h-px flex-1 border-t border-dashed border-[#b8d9c2]" />
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eaf7ee] text-[#6db37b]">
+                    <HeartPulse size={23} />
+                  </span>
+                  <span className="h-px flex-1 border-t border-dashed border-[#b8d9c2]" />
+                </div>
+
+                <p className="text-[18px] font-semibold leading-9 text-[#52635b]">
                   로그인 후 건강 분석 결과와 진행 중인 루틴을
                   <br />
                   이어서 확인할 수 있어요.
@@ -531,7 +546,7 @@ export default function LoginPage() {
                   disabled={loading || withdrawActionLoading}
                   whileHover={!loading ? { y: -2, scale: 1.01 } : {}}
                   whileTap={!loading ? { scale: 0.995 } : {}}
-                  className="mt-10 flex h-[64px] w-full items-center justify-center gap-3 rounded-[22px] border border-white/50 bg-white/75 px-6 text-[18px] font-medium text-[#274236] shadow-[0_10px_24px_rgba(22,49,38,0.06)] backdrop-blur-xl transition hover:bg-white/90 hover:shadow-[0_14px_30px_rgba(22,49,38,0.10)] disabled:cursor-not-allowed disabled:opacity-70"
+                  className="mt-10 flex h-[64px] w-full items-center justify-center gap-4 rounded-[24px] border border-[#7fc78f]/70 bg-white px-6 text-[20px] font-black text-[#26362f] shadow-[0_12px_28px_rgba(46,125,91,0.08)] transition hover:-translate-y-0.5 hover:border-[#46B96A] hover:bg-[#fbfdfb] hover:shadow-[0_16px_34px_rgba(46,125,91,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white">
                     <svg width="20" height="20" viewBox="0 0 48 48">
@@ -557,14 +572,21 @@ export default function LoginPage() {
                   <span>{loading ? "로그인 중..." : "Google로 계속하기"}</span>
                 </motion.button>
 
+                <p className="mt-5 inline-flex items-center gap-2 text-[15px] font-black text-[#4C9A5F]">
+                  <LockKeyhole size={17} />
+                  안전한 로그인으로 내 정보는 안전하게 보호돼요.
+                </p>
+
                 {errorMessage ? (
                   <p className="mt-4 text-sm text-[#d8614d]">{errorMessage}</p>
                 ) : null}
 
-                <p className="mt-8 text-[14px] leading-7 text-[#94a69d]">
+                <p className="mt-9 text-[14px] font-semibold leading-7 text-[#93a59c]">
                   MyHealthBuddy에 가입함으로써 MyHealthBuddy의
                   <br />
-                  이용 약관 및 개인정보처리방침에 동의하게 됩니다.
+                  <span className="text-[#2E7D5B]">이용 약관</span> 및{" "}
+                  <span className="text-[#2E7D5B]">개인정보처리방침</span>에
+                  동의하게 됩니다.
                 </p>
               </div>
             </div>

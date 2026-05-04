@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import AppShell from "@/src/components/AppShell";
 import { storage } from "@/src/utils/storage";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type FeedItem = {
   user_id: number;
@@ -125,15 +126,12 @@ export default function SocialFeedPage() {
               className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-4"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#e7efe9]">
-                  {item.profile_image ? (
-                    <img src={item.profile_image} alt={item.nickname} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                      {item.nickname[0]}
-                    </div>
-                  )}
-                </div>
+                <ProfileNameAvatar
+                  name={item.nickname}
+                  image={item.profile_image}
+                  className="h-10 w-10"
+                  textClassName="text-[10px]"
+                />
                 <div>
                   <p className="text-sm font-semibold text-[#163126]">
                     {item.nickname}

@@ -10,6 +10,7 @@ import {
   type Friend,
   type UserSearchResult,
 } from "@/src/api/social";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type Props = {
   open: boolean;
@@ -306,13 +307,12 @@ function FriendAvatar({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#eef7e8] text-sm font-bold text-[#2E7D5B]">
-        {image ? (
-          <img src={image} alt={name} className="h-full w-full object-cover" />
-        ) : (
-          name[0]
-        )}
-      </div>
+      <ProfileNameAvatar
+        name={name}
+        image={image}
+        className="h-11 w-11"
+        textClassName="text-[10px]"
+      />
       <div className="min-w-0">
         <p className="truncate text-sm font-bold text-[#163126]">{name}</p>
         <p className="mt-1 text-xs text-[#163126]/45">{description}</p>

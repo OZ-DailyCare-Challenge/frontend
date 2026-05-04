@@ -15,6 +15,7 @@ import {
   type FriendRequest,
   type Friend,
 } from "@/src/api/social";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type Tab = "search" | "requests" | "friends";
 
@@ -305,15 +306,12 @@ export default function SocialContent() {
                 className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
-                    {user.profile_image ? (
-                      <img src={user.profile_image} alt={user.nickname} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                        {user.nickname[0]}
-                      </div>
-                    )}
-                  </div>
+                  <ProfileNameAvatar
+                    name={user.nickname}
+                    image={user.profile_image}
+                    className="h-10 w-10"
+                    textClassName="text-[10px]"
+                  />
                   <span className="text-sm font-medium text-[#163126]">{user.nickname}</span>
                 </div>
                 {user.is_friend ? (
@@ -361,15 +359,12 @@ export default function SocialContent() {
               className="flex items-center justify-between rounded-[22px] border border-[#2E7D5B]/10 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(46,125,91,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(46,125,91,0.1)]"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
-                  {req.requester_profile_image ? (
-                    <img src={req.requester_profile_image} alt={req.requester_nickname} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                      {req.requester_nickname[0]}
-                    </div>
-                  )}
-                </div>
+                <ProfileNameAvatar
+                  name={req.requester_nickname}
+                  image={req.requester_profile_image}
+                  className="h-10 w-10"
+                  textClassName="text-[10px]"
+                />
                 <span className="text-sm font-medium text-[#163126]">{req.requester_nickname}</span>
               </div>
               <div className="flex gap-2">
@@ -420,15 +415,12 @@ export default function SocialContent() {
               className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-3"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[#e7efe9] overflow-hidden">
-                  {friend.profile_image ? (
-                    <img src={friend.profile_image} alt={friend.nickname} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-sm text-[#2E7D5B]">
-                      {friend.nickname[0]}
-                    </div>
-                  )}
-                </div>
+                <ProfileNameAvatar
+                  name={friend.nickname}
+                  image={friend.profile_image}
+                  className="h-10 w-10"
+                  textClassName="text-[10px]"
+                />
                 <span className="text-sm font-medium text-[#163126]">{friend.nickname}</span>
               </div>
               <button
