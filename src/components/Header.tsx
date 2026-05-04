@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { storage } from "@/src/utils/storage";
 import { logoutUser } from "@/src/api/user";
 import { isHealthFlowComplete } from "@/src/utils/health-flow";
+import { useAccessStore } from "@/src/store/access-store";
 
 type HeaderProps = {
   visible?: boolean;
@@ -13,31 +14,28 @@ type HeaderProps = {
 
 export default function Header({
   visible = true,
-  theme = "light",
+  theme = "dark",
 }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [displayName, setDisplayName] = useState("버디");
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const hydrated = useAccessStore((state) => state.hydrated);
+  const displayName = useAccessStore((state) => state.displayName);
+  const initialize = useAccessStore((state) => state.initialize);
+  const clearClientSession = useAccessStore((state) => state.clearClientSession);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
 
   useEffect(() => {
     const token = storage.getAccessToken?.();
-    const loggedIn = Boolean(token);
-
-    setIsLoggedIn(loggedIn);
-
-    if (!loggedIn) {
-      setDisplayName("버디");
-      return;
-    }
-
-    const user = storage.getUser?.();
-    setDisplayName(user?.nickname || "버디");
-  }, [pathname]);
+    setIsLoggedIn(Boolean(token));
+  }, [pathname, hydrated]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -52,8 +50,6 @@ export default function Header({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  const isLight = theme === "light";
 
   const handleLoginClick = () => {
     router.push("/login");
@@ -83,8 +79,8 @@ export default function Header({
     try {
       setLoggingOut(true);
       await logoutUser();
+      clearClientSession();
       setIsLoggedIn(false);
-      setDisplayName("버디");
       setMenuOpen(false);
       window.location.replace("/login");
     } catch (error) {
@@ -95,17 +91,12 @@ export default function Header({
     }
   };
 
-  const brandClass = isLight
-    ? "border border-white/40 bg-white/30 text-[#1F5C45] backdrop-blur-md shadow-[0_6px_18px_rgba(22,49,38,0.08)] hover:bg-white/40"
-    : "border border-[#d8e6dc] bg-white/88 text-[#163126] backdrop-blur-xl shadow-[0_10px_24px_rgba(22,49,38,0.05)] hover:bg-white";
-
-  const buttonClass = isLight
-    ? "rounded-full border border-white/40 bg-white/30 px-5 py-2.5 text-sm font-semibold text-[#1F5C45] shadow-[0_10px_30px_rgba(22,49,38,0.08)] backdrop-blur-md hover:bg-white/40"
-    : "rounded-full border border-[#d8e6dc] bg-white/88 px-5 py-2.5 text-sm font-semibold text-[#163126] shadow-[0_10px_24px_rgba(22,49,38,0.06)] backdrop-blur-xl hover:bg-white";
-
-  const dropdownClass = isLight
-    ? "border-white/20 bg-white/92 text-[#163126] backdrop-blur-xl"
-    : "border-[#d8e6dc] bg-white text-[#163126]";
+  const isTransparent = theme === "light";
+  const brandTitleClass = isTransparent ? "text-[#1f5c45]" : "text-[#1f5c45]";
+  const brandSubClass = isTransparent ? "text-[#2E7D5B]/72" : "text-[#163126]/45";
+  const buttonClass = isTransparent
+    ? "rounded-full border border-[#1f5c45]/18 bg-white/35 px-5 py-2.5 text-sm font-bold text-[#1f5c45] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/50"
+    : "rounded-full border border-[#163126]/10 bg-white px-5 py-2.5 text-sm font-bold text-[#163126]/70 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#f7fbf8] hover:text-[#163126]";
 
   return (
     <header
@@ -116,24 +107,42 @@ export default function Header({
       <div className="relative">
         <div
           className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-            isLight
-              ? "bg-transparent backdrop-blur-0 border-b border-transparent shadow-none"
-              : "bg-white/80 backdrop-blur-2xl border-b border-[#e4efe7]/95 shadow-[0_10px_28px_rgba(22,49,38,0.06)]"
+            isTransparent
+              ? "border-b border-transparent bg-transparent backdrop-blur-0"
+              : "border-b border-[#163126]/6 bg-white/92 backdrop-blur-md"
           }`}
         />
 
-        <div className="relative z-10 flex h-[88px] w-full items-center justify-between px-6 md:px-10 lg:px-16">
+        <div className="relative z-10 flex h-[76px] w-full items-center justify-between px-6 md:px-10 lg:px-16">
           <button
             onClick={() => router.push("/")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-500 ${brandClass}`}
+            className="group flex items-center gap-3 text-left transition-all duration-300"
           >
-            MyHealthBuddy
+            <span
+              className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl ${
+                isTransparent ? "bg-white/75 backdrop-blur-md" : "bg-[#f7fbf8]"
+              }`}
+            >
+              <img
+                src="/images/buddy-face.png"
+                alt=""
+                className="h-10 w-10 object-cover"
+              />
+            </span>
+            <span>
+              <span className={`block text-[18px] font-black leading-none ${brandTitleClass}`}>
+                MyHealthBuddy
+              </span>
+              <span className={`mt-1 block text-[10px] font-bold ${brandSubClass}`}>
+                건강한 하루를 함께 기록해요
+              </span>
+            </span>
           </button>
 
           {!isLoggedIn ? (
             <button
               onClick={handleLoginClick}
-              className={`transition-all duration-500 ${buttonClass}`}
+              className={buttonClass}
             >
               로그인
             </button>
@@ -141,14 +150,14 @@ export default function Header({
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setMenuOpen((prev) => !prev)}
-                className={`transition-all duration-500 ${buttonClass}`}
+                className={buttonClass}
               >
                 {displayName}님 ▾
               </button>
 
               {menuOpen && (
                 <div
-                  className={`absolute right-0 mt-3 w-44 overflow-hidden rounded-2xl border shadow-[0_14px_36px_rgba(22,49,38,0.12)] ${dropdownClass}`}
+                  className="absolute right-0 mt-3 w-44 overflow-hidden rounded-2xl border border-[#163126]/8 bg-white text-[#163126] shadow-[0_14px_36px_rgba(22,49,38,0.08)]"
                 >
                   <button
                     onClick={handleDashboardMove}
