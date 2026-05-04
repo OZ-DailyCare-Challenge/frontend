@@ -12,6 +12,7 @@ import { getHealthRecords } from "@/src/api/health";
 import { getAnalysisHistory } from "@/src/api/analysis";
 import { storage } from "@/src/utils/storage";
 import { useChallengeStore } from "@/src/store/challenge-store";
+import { getMyActiveChallenges } from "@/src/api/challenge";
 
 type HealthRecord = {
   id?: number;
@@ -641,14 +642,25 @@ export default function GrowthPage() {
         }
 
         const storedUser = storage.getUser?.();
-        const challenges = (useChallengeStore.getState().challenges ??
-          []) as ChallengeLike[];
 
-        const [dashboardRes, healthRes, analysisRes] = await Promise.all([
+        const [dashboardRes, healthRes, analysisRes, myActiveRes] = await Promise.all([
           getDashboard().catch(() => null),
           getHealthRecords().catch(() => []),
           getAnalysisHistory().catch(() => ({ items: [] })),
+          getMyActiveChallenges().catch(() => ({ challenges: [] })),
         ]);
+
+        // API 활성 챌린지를 ChallengeLike로 변환, 없으면 Zustand 스토어 폴백
+        const apiChallenges: ChallengeLike[] = (myActiveRes.challenges ?? []).map((c) => ({
+          id: c.challenge_id,
+          title: c.title,
+          currentStreak: c.current_streak,
+          status: "in_progress",
+          logs: [],
+        }));
+        const challenges: ChallengeLike[] = apiChallenges.length > 0
+          ? apiChallenges
+          : (useChallengeStore.getState().challenges ?? []) as ChallengeLike[];
 
         const records = extractArray(healthRes);
         healthRecordsRef.current = records;

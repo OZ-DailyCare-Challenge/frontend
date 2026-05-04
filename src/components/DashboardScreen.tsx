@@ -19,8 +19,8 @@ import {
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
 import {
-  getChallengesWithFallback,
-  type Challenge as ApiChallenge,
+  getMyActiveChallenges,
+  type MyActiveChallenge,
 } from "@/src/api/challenge";
 import { getFeed, getFriendRequests, type FeedItem } from "@/src/api/social";
 import HealthGuidePanel from "@/src/components/dashboard/HealthGuidePanel";
@@ -333,7 +333,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [shopItems, setShopItems] = useState(initialShopItems);
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [serverChallenges, setServerChallenges] = useState<ApiChallenge[]>([]);
+  const [myActiveChallenges, setMyActiveChallenges] = useState<MyActiveChallenge[]>([]);
   const [activeFeedIndex, setActiveFeedIndex] = useState(0);
   const [dragDirection, setDragDirection] = useState(0);
   const [guidePanelOpen, setGuidePanelOpen] = useState(true);
@@ -417,15 +417,10 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, [mock]);
 
   useEffect(() => {
-    if (mock) {
-      setServerChallenges(mockServerChallenges);
-      return;
-    }
-
-    getChallengesWithFallback()
-      .then((res) => setServerChallenges(res.challenges ?? []))
-      .catch(() => setServerChallenges([]));
-  }, [mock]);
+    getMyActiveChallenges()
+      .then((res) => setMyActiveChallenges(res.challenges ?? []))
+      .catch(() => setMyActiveChallenges([]));
+  }, []);
 
   const groupedFeedItems = useMemo(() => {
     const map = new Map<
@@ -490,22 +485,8 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   };
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
-  const activeServerChallenges = useMemo(() => {
-    return serverChallenges.filter((challenge) => {
-      const status = challenge.user_challenge?.status?.toLowerCase();
-      return status === "active" || status === "in_progress";
-    });
-  }, [serverChallenges]);
-
-  const activeChallengeCount = activeServerChallenges.length;
-
-  const completedTodayCount = activeServerChallenges.filter((challenge) => {
-    const completedAt = challenge.user_challenge?.completed_at;
-    if (!completedAt) return false;
-
-    const today = new Date().toISOString().slice(0, 10);
-    return completedAt.slice(0, 10) === today;
-  }).length;
+  const activeChallengeCount = myActiveChallenges.length;
+  const completedTodayCount = 0;
 
   const dashboardChallengePercent = activeChallengeCount
     ? Math.round((completedTodayCount / activeChallengeCount) * 100)
@@ -890,43 +871,25 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 />
               </div>
 
-              <div className="min-w-0">
-                {activeServerChallenges.length === 0 ? (
+              <div className="space-y-3">
+                {myActiveChallenges.length === 0 ? (
                   <div className="rounded-2xl bg-[#f8fbf8] px-4 py-5 text-sm text-[#163126]/50">
                     진행 중인 챌린지가 없어요.
                   </div>
                 ) : (
-                  <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-2">
-                    {activeServerChallenges.map((challenge) => {
-                      const completedAt = challenge.user_challenge?.completed_at;
-                      const today = new Date().toISOString().slice(0, 10);
-                      const completedToday = Boolean(
-                        completedAt && completedAt.slice(0, 10) === today
-                      );
-
-                      return (
-                        <div
-                          key={challenge.id}
-                          className={`min-h-[158px] w-[250px] shrink-0 rounded-[24px] border p-4 shadow-[0_10px_24px_rgba(46,125,91,0.04)] ${
-                            completedToday
-                              ? "border-[#2E7D5B]/16 bg-[#f3fbf6]"
-                              : "border-[#f0b45b]/22 bg-[#fffaf1]"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                completedToday
-                                  ? "bg-[#dff5e8] text-[#2E7D5B]"
-                                  : "bg-[#fff0d8] text-[#c87916]"
-                              }`}
-                            >
-                              {completedToday ? "오늘 인증 완료" : "오늘 인증 필요"}
-                            </span>
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6a8c1e]">
-                              {challenge.user_challenge?.current_streak ?? 0}일
-                            </span>
-                          </div>
+                  myActiveChallenges.slice(0, 3).map((challenge) => (
+                    <div
+                      key={challenge.user_challenge_id}
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-[#163126]">
+                          {challenge.title}
+                        </p>
+                        <p className="mt-1 text-xs text-[#163126]/45">
+                          {challenge.current_streak}일 연속 진행 중
+                        </p>
+                      </div>
 
                           <p className="mt-5 line-clamp-2 text-base font-bold leading-6 text-[#163126]">
                             {challenge.title}

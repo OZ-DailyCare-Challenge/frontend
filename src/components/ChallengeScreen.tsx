@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   getChallengesWithFallback,
+  getMyActiveChallenges,
   getRecommendations,
   joinChallengeWithFallback,
   abandonChallengeWithFallback,
@@ -465,31 +466,34 @@ export default function ChallengeScreen() {
       try {
         setLoading(true);
 
-        if (typeof window !== "undefined") {
-          const cached = localStorage.getItem(cacheKey);
-
-          if (cached) {
-            try {
-              const cachedChallenges = JSON.parse(cached) as ChallengeItem[];
-              setBaseChallenges(cachedChallenges);
-              syncChallengeStore(cachedChallenges);
-              setLoading(false);
-            } catch {
-              localStorage.removeItem(cacheKey);
-            }
-          }
-        }
-
-        const [challengeResponse, recommendResponse] = await Promise.allSettled([
+        const [challengeResponse, recommendResponse, myActiveResponse] = await Promise.allSettled([
           getChallengesWithFallback(),
           getRecommendations(),
+          getMyActiveChallenges(),
         ]);
 
         if (challengeResponse.status === "fulfilled") {
           setUsingFallbackChallenges(challengeResponse.value.isFallback);
-          const activeMap = getStoredActiveChallengeMap();
+
+          // API에서 가져온 활성 챌린지로 activeMap 구성 (sessionStorage 우선, API로 보완)
+          const storedMap = getStoredActiveChallengeMap();
+          if (myActiveResponse.status === "fulfilled") {
+            myActiveResponse.value.challenges.forEach((ac) => {
+              if (!storedMap[ac.challenge_id]) {
+                storedMap[ac.challenge_id] = {
+                  userChallengeId: ac.user_challenge_id,
+                  currentStreak: ac.current_streak,
+                  status: "in_progress",
+                  logs: [],
+                  lastSubmittedDate: null,
+                };
+              }
+            });
+            setStoredActiveChallengeMap(storedMap);
+          }
+
           const mapped = (challengeResponse.value.challenges ?? []).map(
-            (challenge) => mapApiChallengeToUi(challenge, activeMap)
+            (challenge) => mapApiChallengeToUi(challenge, storedMap)
           );
           setBaseChallenges(mapped);
           syncChallengeStore(mapped);
