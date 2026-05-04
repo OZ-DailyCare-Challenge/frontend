@@ -20,6 +20,7 @@ import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
 import {
   getMyActiveChallenges,
+  type Challenge as ApiChallenge,
   type MyActiveChallenge,
 } from "@/src/api/challenge";
 import { getFeed, getFriendRequests, type FeedItem } from "@/src/api/social";
@@ -890,19 +891,11 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                           {challenge.current_streak}일 연속 진행 중
                         </p>
                       </div>
-
-                          <p className="mt-5 line-clamp-2 text-base font-bold leading-6 text-[#163126]">
-                            {challenge.title}
-                          </p>
-                          <p className="mt-3 text-xs leading-5 text-[#163126]/52">
-                            {completedToday
-                              ? "오늘 루틴을 완료했어요. 내일도 이어가요."
-                              : "오늘 인증하면 연속 기록을 이어갈 수 있어요."}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                      <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                        진행중
+                      </span>
+                    </div>
+                  ))
                 )}
               </div>
             </motion.div>
