@@ -134,6 +134,34 @@ function mapInitialChallengeToApiChallenge(): Challenge[] {
  * AI 맞춤 챌린지 추천 (RAG)
  * GET /api/v1/challenges/recommend
  */
+export type MyActiveChallenge = {
+  user_challenge_id: number;
+  challenge_id: number;
+  title: string;
+  category: string;
+  current_streak: number;
+  start_date: string;
+  duration_days: number;
+  required_success_days: number;
+  verification_method: string;
+};
+
+export type MyActiveChallengeListResponse = {
+  challenges: MyActiveChallenge[];
+};
+
+export async function getMyActiveChallenges(): Promise<MyActiveChallengeListResponse> {
+  const accessToken = storage.getAccessToken();
+  if (!accessToken) throw new Error("로그인이 필요합니다.");
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const response = await fetch(`${apiBaseUrl}/api/v1/user-challenges/my`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error("내 챌린지 조회 실패");
+  return response.json();
+}
+
 export async function getRecommendations(): Promise<RecommendResponse> {
   const response = await fetch(
     `${getApiBaseUrl()}/api/v1/challenges/recommend`,
