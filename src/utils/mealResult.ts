@@ -14,6 +14,20 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function normalizeDailyRecommendedRatio(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+
+  const raw = value as Record<string, unknown>;
+
+  return {
+    calories_pct: toNumber(raw.calories_pct, 0),
+    carbohydrate_pct: toNumber(raw.carbohydrate_pct, 0),
+    protein_pct: toNumber(raw.protein_pct, 0),
+    fat_pct: toNumber(raw.fat_pct, 0),
+    sodium_pct: toNumber(raw.sodium_pct, 0),
+  };
+}
+
 export function normalizeMealResult(input: unknown): MealAnalysisResult {
   if (!input || typeof input !== "object") {
     return {
@@ -30,6 +44,9 @@ export function normalizeMealResult(input: unknown): MealAnalysisResult {
         protein_pct: 0,
         fat_pct: 0,
       },
+      daily_recommended_ratio: undefined,
+      daily_intake_ratio: undefined,
+      recommended_ratio: undefined,
       detailed_analysis: {
         strength: "",
         improvement: "",
@@ -110,6 +127,11 @@ export function normalizeMealResult(input: unknown): MealAnalysisResult {
             protein_pct: 0,
             fat_pct: 0,
           },
+    daily_recommended_ratio: normalizeDailyRecommendedRatio(
+      raw.daily_recommended_ratio
+    ),
+    daily_intake_ratio: normalizeDailyRecommendedRatio(raw.daily_intake_ratio),
+    recommended_ratio: normalizeDailyRecommendedRatio(raw.recommended_ratio),
     detailed_analysis:
       raw.detailed_analysis && typeof raw.detailed_analysis === "object"
         ? {
