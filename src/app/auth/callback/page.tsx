@@ -111,6 +111,7 @@ function AuthCallbackInner() {
 
         try {
           await getDashboard();
+          await useAccessStore.getState().syncAccessFromServer();
           router.push(result.is_new_user ? "/input" : "/dashboard");
         } catch {
           router.push("/input");
