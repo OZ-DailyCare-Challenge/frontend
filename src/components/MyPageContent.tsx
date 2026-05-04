@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
+  CalendarDays,
   ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Coins,
+  Edit3,
+  Flame,
   HeartPulse,
   LogOut,
   Settings,
@@ -25,6 +31,8 @@ import {
 import { getHealthRecords, patchHealthRecord } from "@/src/api/health";
 import { storage } from "@/src/utils/storage";
 import { notificationStorage } from "@/src/utils/notificationStorage";
+import { useAccessStore } from "@/src/store/access-store";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 import type {
   HealthRecord,
   NotificationSettings,
@@ -141,6 +149,7 @@ function formatRiskLabel(value?: string) {
 }
 
 export default function MyPageContent() {
+  const updateStoredProfile = useAccessStore((state) => state.updateStoredProfile);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>(
@@ -201,11 +210,21 @@ export default function MyPageContent() {
           [getDashboard(), getHealthRecords(), getAnalysisHistory()]
         );
 
+        const prevStoredUser = storage.getUser?.() ?? {};
         const normalizedProfile: UserProfile = {
           id: typeof dashboard?.id === "number" ? dashboard.id : undefined,
-          email: dashboard?.email ?? "",
-          nickname: dashboard?.nickname ?? "",
-          profile_image: dashboard?.profile_image ?? "",
+          email: dashboard?.email ?? prevStoredUser.email ?? "",
+          nickname:
+            dashboard?.nickname ??
+            prevStoredUser.nickname ??
+            dashboard?.name ??
+            prevStoredUser.name ??
+            "",
+          profile_image:
+            dashboard?.profile_image ??
+            prevStoredUser.profile_image ??
+            prevStoredUser.picture ??
+            "",
           role: typeof dashboard?.role === "string" ? dashboard.role : undefined,
           gender:
             typeof dashboard?.gender === "string" ? dashboard.gender : undefined,
@@ -237,8 +256,7 @@ export default function MyPageContent() {
               : undefined,
         };
 
-        const prevStoredUser = storage.getUser?.() ?? {};
-        storage.setUser?.({
+        updateStoredProfile({
           ...prevStoredUser,
           ...normalizedProfile,
           nickname: normalizedProfile.nickname ?? prevStoredUser.nickname ?? "",
@@ -310,7 +328,7 @@ export default function MyPageContent() {
     };
 
     void init();
-  }, []);
+  }, [updateStoredProfile]);
 
   const ageText = useMemo(() => {
     const year = Number(profileForm.birth_year);
@@ -410,7 +428,12 @@ export default function MyPageContent() {
           updated.profile_image ?? (profileForm.profile_image.trim() || ""),
       };
 
-      storage.setUser?.(nextStoredUser);
+      updateStoredProfile(nextStoredUser);
+      setProfileForm((prev) => ({
+        ...prev,
+        nickname: nextStoredUser.nickname ?? "",
+        profile_image: nextStoredUser.profile_image ?? "",
+      }));
 
       setProfile((prev) => {
         const nextProfile: UserProfile = {
@@ -608,78 +631,145 @@ export default function MyPageContent() {
 
   const renderOverview = () => {
     return (
-      <div className="mx-auto max-w-3xl pt-4 md:pt-8">
-        <div className="rounded-[32px] border border-[#163126]/8 bg-white/88 p-4 shadow-[0_22px_60px_rgba(46,125,91,0.06)] md:p-6">
-          <button
-            type="button"
-            onClick={() => setActiveView("profile")}
-            className="block w-full rounded-[28px] transition hover:bg-[#f9fcfa]"
-          >
-            <div className="flex flex-col items-center gap-5 py-2 text-center md:flex-row md:text-left">
-              <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-[#eef9f2] text-3xl font-bold text-[#2E7D5B] shadow-[0_12px_28px_rgba(46,125,91,0.08)]">
-                {profileForm.profile_image ? (
-                  <img
-                    src={profileForm.profile_image}
-                    alt="프로필 이미지"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  profileForm.nickname?.[0] ?? "B"
-                )}
+      <div className="mx-auto w-full max-w-7xl">
+        <section className="rounded-[24px] bg-white px-5 py-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] md:px-7 md:py-7">
+          <div className="grid gap-6 rounded-[20px] bg-[#fbfdfb] px-5 py-5 lg:grid-cols-[minmax(0,1fr)_170px_170px] lg:items-center">
+            <button
+              type="button"
+              onClick={() => setActiveView("profile")}
+              className="flex flex-col items-center gap-5 text-center transition hover:-translate-y-0.5 md:flex-row md:text-left"
+            >
+              <div className="relative">
+                <ProfileNameAvatar
+                  name={profileForm.nickname}
+                  image={profileForm.profile_image}
+                  className="h-32 w-32 shadow-[0_12px_28px_rgba(46,125,91,0.08)]"
+                  textClassName="text-lg"
+                />
+                <span className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#2E7D5B] shadow-[0_8px_18px_rgba(46,125,91,0.12)]">
+                  <Edit3 size={16} />
+                </span>
               </div>
 
-              <div className="flex-1">
-                <p className="text-3xl font-bold text-[#163126]">
+              <div className="min-w-0 flex-1">
+                <p className="text-3xl font-black text-[#163126]">
                   {profileForm.nickname || "사용자"}
                 </p>
-                <p className="mt-2 text-sm text-[#163126]/55">{displayEmail}</p>
+                <p className="mt-2 text-sm font-semibold text-[#163126]/55">
+                  안녕하세요! 오늘도 건강한 하루 보내세요.
+                </p>
 
-                <div className="mt-4 inline-flex rounded-full bg-[#eef9f2] px-4 py-2 text-sm font-semibold text-[#2E7D5B]">
-                  보유 포인트 {displayPoint}P
-                </div>
-
-                {latestAnalysis && (
-                  <div className="mt-3 inline-flex rounded-full bg-[#fff8df] px-4 py-2 text-sm font-semibold text-[#8a6c00]">
-                    최근 위험도 {latestAnalysis.cvd_risk_percent}%
+                <div className="mt-5 grid gap-2 text-sm font-bold text-[#163126]/68 sm:grid-cols-2">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={16} className="text-[#2E7D5B]" />
+                    가입일 {profile?.created_at ? formatDateTime(profile.created_at).slice(0, 12) : "-"}
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    <Flame size={16} className="text-[#f08a16]" />
+                    연속 기록 {analysisHistory.length ? `${analysisHistory.length}회` : "-"}
+                  </div>
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          <div className="mt-8 flex flex-col gap-4">
-            <OverviewActionCard
-              icon={<UserRound size={18} />}
-              title="프로필 설정"
-              description="닉네임, 출생연도, 프로필 이미지를 관리해요."
-              onClick={() => setActiveView("profile")}
+            <OverviewStatCard
+              icon={<Coins size={22} fill="currentColor" />}
+              label="보유 포인트"
+              value={`${displayPoint}P`}
+              sub="포인트 내역"
+              tone="yellow"
             />
-            <OverviewActionCard
-              icon={<HeartPulse size={18} />}
-              title="건강 데이터 관리"
-              description="최근 건강 기록과 생활 습관 정보를 수정해요."
-              onClick={() => setActiveView("health")}
-            />
-            <OverviewActionCard
-              icon={<Sparkles size={18} />}
-              title="건강 분석 이력"
-              description="심혈관 위험도 분석 결과와 AI 피드백을 확인해요."
-              onClick={() => setActiveView("analysis")}
-            />
-            <OverviewActionCard
-              icon={<Bell size={18} />}
-              title="알림 설정"
-              description="챌린지와 친구 활동 알림을 관리해요."
-              onClick={() => setActiveView("notifications")}
-            />
-            <OverviewActionCard
-              icon={<Settings size={18} />}
-              title="계정 관리"
-              description="로그아웃과 회원 탈퇴를 진행할 수 있어요."
-              onClick={() => setActiveView("account")}
+            <OverviewStatCard
+              icon={<HeartPulse size={22} fill="currentColor" />}
+              label="최근 위험도"
+              value={latestAnalysis ? `${latestAnalysis.cvd_risk_percent}%` : "-"}
+              sub="자세히 보기"
+              tone="red"
             />
           </div>
-        </div>
+
+          <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="space-y-5">
+              <div>
+                <p className="text-lg font-black text-[#163126]">내 정보 관리</p>
+                <div className="mt-3 space-y-3">
+                  <OverviewActionRow
+                    icon={<UserRound size={20} />}
+                    title="프로필 설정"
+                    description="닉네임, 프로필 이미지, 자기소개를 관리해요."
+                    onClick={() => setActiveView("profile")}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-lg font-black text-[#163126]">건강 관리</p>
+                <div className="mt-3 space-y-3">
+                  <OverviewActionRow
+                    icon={<HeartPulse size={20} />}
+                    title="건강 데이터 관리"
+                    description="최근 건강 기록과 생활 습관 정보를 수정해요."
+                    onClick={() => setActiveView("health")}
+                  />
+                  <OverviewActionRow
+                    icon={<Sparkles size={20} />}
+                    title="건강 분석 이력"
+                    description="AI 분석 결과와 피드백을 확인할 수 있어요."
+                    onClick={() => setActiveView("analysis")}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-lg font-black text-[#163126]">계정 및 설정</p>
+                <div className="mt-3 space-y-3">
+                  <OverviewActionRow
+                    icon={<Bell size={20} />}
+                    title="알림 설정"
+                    description="챌린지 알림, 친구 활동 알림을 설정해요."
+                    onClick={() => setActiveView("notifications")}
+                  />
+                  <OverviewActionRow
+                    icon={<Settings size={20} />}
+                    title="계정 관리"
+                    description="비밀번호 변경, 회원 탈퇴 등 계정 관련 설정을 할 수 있어요."
+                    onClick={() => setActiveView("account")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <aside className="rounded-[20px] bg-[#f2fbef] px-5 py-5">
+              <div className="rounded-[28px] bg-white px-5 py-4 text-center text-sm font-black leading-6 text-[#2E7D5B] shadow-[0_10px_24px_rgba(46,125,91,0.08)]">
+                내 정보를 정리하면
+                <br />서비스를 더 편하게 써요!
+              </div>
+              <img
+                src="/images/buddy-review.png"
+                alt=""
+                className="mx-auto mt-5 h-36 w-36 object-contain"
+              />
+
+              <div className="mt-4 space-y-3 rounded-[18px] bg-white px-4 py-4">
+                <GuideItem
+                  icon={<UserRound size={18} />}
+                  title="프로필 관리"
+                  description="닉네임과 프로필 이미지를 언제든 수정해요."
+                />
+                <GuideItem
+                  icon={<Bell size={18} />}
+                  title="알림 설정"
+                  description="필요한 알림만 켜고 끌 수 있어요."
+                />
+                <GuideItem
+                  icon={<ShieldAlert size={18} />}
+                  title="계정 관리"
+                  description="로그아웃과 회원 탈퇴를 안전하게 처리해요."
+                />
+              </div>
+            </aside>
+          </div>
+        </section>
       </div>
     );
   };
@@ -750,19 +840,13 @@ export default function MyPageContent() {
                   </span>
 
                   <div className="flex items-center gap-4">
-                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-[#163126]/10 bg-[#eef9f2]">
-                      {profileForm.profile_image ? (
-                        <img
-                          src={profileForm.profile_image}
-                          alt="프로필 미리보기"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-2xl font-bold text-[#2E7D5B]">
-                          {profileForm.nickname?.[0] ?? "B"}
-                        </span>
-                      )}
-                    </div>
+                    <ProfileNameAvatar
+                      name={profileForm.nickname}
+                      image={profileForm.profile_image}
+                      alt="프로필 미리보기"
+                      className="h-24 w-24 border border-[#163126]/10"
+                      textClassName="text-sm"
+                    />
 
                     <p className="text-sm leading-6 text-[#163126]/55">
                       프로필 이미지는 아래 URL 입력칸에 직접 넣어주세요.
@@ -1258,6 +1342,97 @@ function OverviewActionCard({
   );
 }
 
+function OverviewStatCard({
+  icon,
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  tone: "yellow" | "red";
+}) {
+  const toneClass =
+    tone === "yellow"
+      ? "bg-[#fff8df] text-[#f4b000]"
+      : "bg-[#fff0f0] text-[#f05a5a]";
+
+  return (
+    <div className="rounded-[18px] bg-white px-5 py-5 shadow-[0_12px_28px_rgba(46,125,91,0.05)]">
+      <div className="flex items-center gap-3">
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneClass}`}
+        >
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-black text-[#163126]/58">{label}</p>
+          <p className="mt-1 text-2xl font-black text-[#163126]">{value}</p>
+          <p className="mt-1 text-xs font-bold text-[#163126]/42">{sub}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverviewActionRow({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[122px] w-full items-center gap-4 rounded-[22px] border border-[#dfe9e2] bg-[#fbfdfb] px-6 py-5 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-[#bfe3c9] hover:bg-white hover:shadow-[0_14px_30px_rgba(46,125,91,0.08)]"
+    >
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-black text-[#163126]">{title}</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#163126]/55">
+          {description}
+        </p>
+      </div>
+      <ChevronRight size={18} className="shrink-0 text-[#163126]/45" />
+    </button>
+  );
+}
+
+function GuideItem({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef9f2] text-[#2E7D5B]">
+        {icon}
+      </div>
+      <div>
+        <p className="text-sm font-black text-[#163126]">{title}</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-[#163126]/55">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SectionCard({
   icon,
   title,
@@ -1301,8 +1476,8 @@ function InputField({
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-[#163126]">
+    <label className="block rounded-[22px] bg-[#fbfdfb] px-4 py-4 transition focus-within:bg-white focus-within:shadow-[0_12px_28px_rgba(46,125,91,0.08)]">
+      <span className="mb-2 block text-sm font-black text-[#163126]">
         {label}
       </span>
       <input
@@ -1310,7 +1485,7 @@ function InputField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         inputMode={inputMode}
-        className="h-12 w-full rounded-[16px] border border-[#163126]/10 bg-[#f9fcfa] px-4 text-sm text-[#163126] outline-none transition focus:border-[#73d99c] focus:bg-white"
+        className="h-14 w-full rounded-[18px] border border-transparent bg-white px-5 text-sm font-semibold text-[#163126] outline-none transition placeholder:text-[#163126]/32 focus:border-[#73d99c] focus:ring-4 focus:ring-[#73d99c]/14"
       />
     </label>
   );
@@ -1324,11 +1499,11 @@ function StaticField({
   value: string;
 }) {
   return (
-    <div>
-      <span className="mb-2 block text-sm font-semibold text-[#163126]">
+    <div className="rounded-[22px] bg-[#fbfdfb] px-4 py-4">
+      <span className="mb-2 block text-sm font-black text-[#163126]">
         {label}
       </span>
-      <div className="flex h-12 items-center rounded-[16px] border border-[#163126]/10 bg-[#f5f7f6] px-4 text-sm text-[#163126]/60">
+      <div className="flex h-14 items-center rounded-[18px] bg-[#eef3ef] px-5 text-sm font-semibold text-[#163126]/60">
         {value}
       </div>
     </div>
@@ -1345,25 +1520,25 @@ function ToggleChoice({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <div className="rounded-[20px] border border-[#163126]/8 bg-[#f9fcfa] p-4">
-      <p className="text-sm font-semibold text-[#163126]">{title}</p>
-      <div className="mt-3 flex gap-2">
+    <div className="rounded-[22px] bg-[#fbfdfb] px-4 py-4">
+      <p className="text-sm font-black text-[#163126]">{title}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-[18px] bg-white p-1.5">
         <button
           onClick={() => onChange(true)}
-          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+          className={`rounded-[14px] px-4 py-3 text-sm font-black transition ${
             value
-              ? "bg-[#163126] text-white"
-              : "border border-[#163126]/10 bg-white text-[#163126]/65"
+              ? "bg-[#46B96A] text-white shadow-[0_8px_18px_rgba(70,185,106,0.16)]"
+              : "text-[#163126]/55 hover:bg-[#f7fbf8]"
           }`}
         >
           예
         </button>
         <button
           onClick={() => onChange(false)}
-          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+          className={`rounded-[14px] px-4 py-3 text-sm font-black transition ${
             !value
-              ? "bg-[#163126] text-white"
-              : "border border-[#163126]/10 bg-white text-[#163126]/65"
+              ? "bg-[#46B96A] text-white shadow-[0_8px_18px_rgba(70,185,106,0.16)]"
+              : "text-[#163126]/55 hover:bg-[#f7fbf8]"
           }`}
         >
           아니오
@@ -1385,21 +1560,23 @@ function SwitchRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[#163126]/8 bg-[#f9fcfa] px-4 py-4">
+    <div className="flex items-center justify-between gap-4 rounded-[22px] bg-[#fbfdfb] px-5 py-5 transition hover:bg-white hover:shadow-[0_12px_28px_rgba(46,125,91,0.06)]">
       <div>
-        <p className="text-sm font-semibold text-[#163126]">{title}</p>
-        <p className="mt-1 text-sm text-[#163126]/55">{description}</p>
+        <p className="text-sm font-black text-[#163126]">{title}</p>
+        <p className="mt-1 text-sm font-semibold text-[#163126]/55">
+          {description}
+        </p>
       </div>
 
       <button
         onClick={onToggle}
-        className={`relative h-7 w-12 rounded-full transition ${
-          checked ? "bg-[#73d99c]" : "bg-[#d8dfdb]"
+        className={`relative h-8 w-14 rounded-full transition ${
+          checked ? "bg-[#46B96A]" : "bg-[#d8dfdb]"
         }`}
       >
         <span
-          className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-            checked ? "left-6" : "left-1"
+          className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-[0_4px_10px_rgba(22,49,38,0.12)] transition ${
+            checked ? "left-7" : "left-1"
           }`}
         />
       </button>
@@ -1446,7 +1623,7 @@ function PrimaryButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/30"
+      className="rounded-full bg-[#46B96A] px-6 py-3.5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-[#35A85A] hover:shadow-[0_14px_30px_rgba(70,185,106,0.18)] disabled:cursor-not-allowed disabled:bg-[#46B96A]/35 disabled:hover:translate-y-0 disabled:hover:shadow-none"
     >
       {children}
     </button>
