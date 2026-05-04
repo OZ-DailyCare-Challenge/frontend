@@ -6,6 +6,14 @@ export type MealNutritionRatio = {
   fat_pct?: number;
 };
 
+export type MealDailyRecommendedRatio = {
+  calories_pct?: number;
+  carbohydrate_pct?: number;
+  protein_pct?: number;
+  fat_pct?: number;
+  sodium_pct?: number;
+};
+
 export type MealLevelInfo = {
   level?: string;
   description?: string;
@@ -35,6 +43,9 @@ export type MealAnalysisResult = {
   feedback_summary?: string;
   estimated_calories?: number;
   sodium_level?: string;
+  daily_recommended_ratio?: MealDailyRecommendedRatio;
+  daily_intake_ratio?: MealDailyRecommendedRatio;
+  recommended_ratio?: MealDailyRecommendedRatio;
   vitamin_info?: MealLevelInfo;
   mineral_info?: MealLevelInfo;
   nutrition_ratio?: MealNutritionRatio;
