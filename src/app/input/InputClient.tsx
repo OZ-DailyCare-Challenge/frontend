@@ -3,6 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  Activity,
+  CalendarDays,
+  Droplets,
+  HeartPulse,
+  Ruler,
+  Scale,
+  ShieldCheck,
+  TestTube2,
+  UserRound,
+  VenusAndMars,
+} from "lucide-react";
+import {
   requestGuestHealthAnalysis,
   createHealthRecord,
   getHealthRecords,
@@ -105,6 +117,12 @@ const initialForm: FormState = {
 };
 
 const totalSteps = 4;
+const stepLabels = [
+  "기본 정보 입력",
+  "건강 수치 입력",
+  "생활 습관 입력",
+  "입력 정보 확인",
+];
 const currentYear = new Date().getFullYear();
 
 const RANGE = {
@@ -860,23 +878,32 @@ export default function InputClient() {
   };
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[linear-gradient(180deg,#F7FBF8_0%,#EEF7F0_100%)] text-[#163126]">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7fbf8] text-[#163126]">
       <header className="flex items-center justify-between px-4 py-5 sm:px-6 md:px-10">
         <button
           onClick={() => router.push("/")}
-          className="flex items-center gap-2 text-sm font-semibold text-[#163126]"
+          className="flex items-center gap-3 text-left"
         >
-          <span className="h-2.5 w-2.5 rounded-full bg-[#7EE8A7]" />
-          MyHealthBuddy
+          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[#f7fbf8]">
+            <img src="/images/buddy-face.png" alt="" className="h-10 w-10 object-cover" />
+          </span>
+          <span>
+            <span className="block text-[18px] font-black leading-none text-[#1f5c45]">
+              MyHealthBuddy
+            </span>
+            <span className="mt-1 block text-[10px] font-bold text-[#163126]/45">
+              건강한 하루를 함께 기록해요
+            </span>
+          </span>
         </button>
 
-        <div className="rounded-full border border-[#163126]/10 bg-white/70 px-4 py-2 text-xs font-medium text-[#163126]/70 backdrop-blur-md md:text-sm">
+        <div className="rounded-full border border-[#163126]/10 bg-white px-5 py-3 text-lg font-black text-[#163126]/82 shadow-[0_8px_20px_rgba(22,49,38,0.04)]">
           {step + 1} / {totalSteps}
         </div>
       </header>
 
       <section className="w-full px-4 pb-16 pt-2 sm:px-6 md:px-8">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl lg:hidden">
           <div className="mb-10 h-3 overflow-hidden rounded-full bg-[#163126]/8">
             <div
               className="h-full rounded-full bg-[linear-gradient(90deg,#7EE8A7,#B7F3C9)] transition-all duration-500"
@@ -885,11 +912,60 @@ export default function InputClient() {
           </div>
         </div>
 
+        <div className="mx-auto hidden w-full max-w-[1440px] grid-cols-[300px_minmax(0,1fr)] gap-8 lg:grid xl:gap-10">
+          <div />
+          <div>
+            <div className="relative h-8">
+              {stepLabels.map((label, index) => {
+                const active = step === index;
+                const done = step > index;
+                const positionClass =
+                  index === 0
+                    ? "left-0"
+                    : index === stepLabels.length - 1
+                    ? "right-0"
+                    : index === 1
+                    ? "left-1/3 -translate-x-1/2"
+                    : "left-2/3 -translate-x-1/2";
+
+                return (
+                  <div
+                    key={label}
+                    className={`absolute top-0 flex items-center gap-2.5 whitespace-nowrap text-sm font-black ${positionClass} ${
+                      active || done ? "text-[#1f5c45]" : "text-[#163126]/42"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm ${
+                        active
+                          ? "border-[#2E7D5B] bg-[#2E7D5B] text-white"
+                          : done
+                          ? "border-[#46B96A] bg-[#eaf7ee] text-[#2E7D5B]"
+                          : "border-[#dfe9e2] bg-white text-[#163126]/55"
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#163126]/8">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#2E7D5B,#46B96A)] transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="mt-10 flex justify-center">
-          <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="hidden lg:flex lg:justify-end">
-              <div className="mt-8 flex items-end gap-4">
-                <div className="relative mt-4 w-[240px] rounded-[24px] border border-white/40 bg-white/72 px-5 py-5 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
+          <div className="grid w-full max-w-[1440px] items-start gap-8 lg:grid-cols-[300px_minmax(0,1fr)] xl:gap-10">
+            <aside className="hidden lg:block">
+              <div className="sticky top-28 flex min-h-[640px] flex-col items-center justify-end rounded-[32px]">
+                <div className="relative z-10 w-[250px] rounded-[26px] border border-[#dfe9e2] bg-white px-5 py-5 shadow-[0_14px_34px_rgba(22,49,38,0.06)]">
                   <p className="text-sm font-medium text-[#2E7D5B]">
                     {guideMessage.eyebrow}
                   </p>
@@ -899,21 +975,22 @@ export default function InputClient() {
                   <p className="mt-3 text-sm leading-7 text-[#163126]/68 whitespace-normal break-keep">
                     {guideMessage.desc}
                   </p>
-                  <div className="absolute right-[-8px] top-8 h-4 w-4 rotate-45 border-r border-t border-white/40 bg-white/72" />
+                  <div className="absolute bottom-[-9px] left-1/2 h-5 w-5 -translate-x-1/2 rotate-45 border-b border-r border-[#dfe9e2] bg-white" />
                 </div>
 
-                <div className="flex h-[190px] w-[190px] shrink-0 items-end justify-center">
+                <div className="relative mt-10 flex h-[390px] w-full items-end justify-center pb-8">
+                  <div className="absolute bottom-2 left-1/2 h-24 w-[330px] -translate-x-1/2 rounded-[50%] bg-[#e7f5e2]" />
                   <img
                     src={guideVisual.imageSrc}
                     alt={guideVisual.imageAlt}
-                    className="h-[180px] w-[180px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
+                    className="relative z-10 h-[300px] w-[300px] object-contain drop-shadow-[0_16px_28px_rgba(0,0,0,0.08)]"
                   />
                 </div>
               </div>
             </aside>
 
             <div className="lg:hidden">
-              <div className="mx-auto mb-6 flex max-w-3xl items-start gap-3 rounded-[24px] border border-white/40 bg-white/68 p-4 shadow-[0_14px_40px_rgba(22,49,38,0.06)] backdrop-blur-xl">
+              <div className="mx-auto mb-6 flex max-w-3xl items-start gap-3 rounded-[24px] border border-[#163126]/8 bg-white p-4">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-[#2E7D5B]">
                     {guideMessage.eyebrow}
@@ -937,7 +1014,7 @@ export default function InputClient() {
             </div>
 
             <div className="w-full">
-              <section className="mx-auto w-full max-w-4xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
+              <section className="mx-auto w-full rounded-[28px] border border-[#dfe9e2] bg-white p-5 shadow-[0_18px_50px_rgba(22,49,38,0.06)] sm:p-6 md:rounded-[40px] md:p-8 lg:p-10 xl:p-12">
                 {prefilling ? (
                   <div className="flex min-h-[360px] items-center justify-center">
                     <p className="text-sm text-[#163126]/55">
@@ -970,7 +1047,7 @@ export default function InputClient() {
                       키, 몸무게와 건강검진 수치는 소수점 첫째 자리까지 입력할 수 있어요.
                     </p>
 
-                    <div className="grid gap-5 md:grid-cols-2">
+                    <div className="grid gap-5 rounded-[28px] border border-[#163126]/8 bg-white px-5 py-5 md:grid-cols-2 md:p-6">
                       <InputField
                         label="닉네임"
                         placeholder="사용하실 닉네임을 입력해주세요"
@@ -980,6 +1057,8 @@ export default function InputClient() {
                           setTouched((prev) => ({ ...prev, nickname: true }))
                         }
                         error={visibleError("nickname")}
+                        icon={<UserRound size={18} />}
+                        maxLength={20}
                       />
 
                       <SelectField
@@ -992,6 +1071,7 @@ export default function InputClient() {
                         options={["여성", "남성"]}
                         placeholder="선택해주세요"
                         error={visibleError("gender")}
+                        icon={<VenusAndMars size={18} />}
                       />
 
                       <InputField
@@ -1004,10 +1084,12 @@ export default function InputClient() {
                         }
                         type="text"
                         error={visibleError("birthYear")}
+                        icon={<CalendarDays size={18} />}
+                        unit="년"
                       />
 
                       <InputField
-                        label="신장(cm)"
+                        label="신장 (cm)"
                         placeholder="예: 170"
                         value={form.height}
                         onChange={(v) => updateField("height", v)}
@@ -1016,10 +1098,12 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("height")}
+                        icon={<Ruler size={18} />}
+                        unit="cm"
                       />
 
                       <InputField
-                        label="체중(kg)"
+                        label="체중 (kg)"
                         placeholder="예: 60"
                         value={form.weight}
                         onChange={(v) => updateField("weight", v)}
@@ -1028,7 +1112,23 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("weight")}
+                        icon={<Scale size={18} />}
+                        unit="kg"
                       />
+
+                      <div className="flex min-h-[108px] items-center gap-4 rounded-[20px] bg-[#f2faf4] px-5 py-4">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2E7D5B]">
+                          <ShieldCheck size={22} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-[#1f5c45]">
+                            개인정보는 안전하게 보호돼요
+                          </p>
+                          <p className="mt-2 text-xs font-semibold leading-5 text-[#163126]/58">
+                            입력하신 정보는 분석 목적으로만 사용되며 안전하게 저장됩니다.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1042,9 +1142,9 @@ export default function InputClient() {
                       badge={ocrPrefilled ? "검진표 기반 자동 입력됨" : undefined}
                     />
 
-                    <div className="grid gap-5 md:grid-cols-2">
+                    <div className="grid gap-5 rounded-[28px] border border-[#163126]/8 bg-white px-5 py-5 md:grid-cols-2 md:p-6">
                       <InputField
-                        label="수축기 혈압(mmHg)"
+                        label="수축기 혈압"
                         placeholder="예: 120"
                         value={form.systolic}
                         onChange={(v) => updateField("systolic", v)}
@@ -1053,10 +1153,12 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("systolic")}
+                        icon={<HeartPulse size={18} />}
+                        unit="mmHg"
                       />
 
                       <InputField
-                        label="이완기 혈압(mmHg)"
+                        label="이완기 혈압"
                         placeholder="예: 80"
                         value={form.diastolic}
                         onChange={(v) => updateField("diastolic", v)}
@@ -1065,10 +1167,12 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("diastolic")}
+                        icon={<Activity size={18} />}
+                        unit="mmHg"
                       />
 
                       <InputField
-                        label="공복 혈당(mg/dL)"
+                        label="공복 혈당"
                         placeholder="예: 95"
                         value={form.fastingGlucose}
                         onChange={(v) => updateField("fastingGlucose", v)}
@@ -1080,10 +1184,12 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("fastingGlucose")}
+                        icon={<Droplets size={18} />}
+                        unit="mg/dL"
                       />
 
                       <InputField
-                        label="총 콜레스테롤(mg/dL)"
+                        label="총 콜레스테롤"
                         placeholder="예: 180"
                         value={form.totalCholesterol}
                         onChange={(v) => updateField("totalCholesterol", v)}
@@ -1095,6 +1201,8 @@ export default function InputClient() {
                         }
                         type="number"
                         error={visibleError("totalCholesterol")}
+                        icon={<TestTube2 size={18} />}
+                        unit="mg/dL"
                       />
                     </div>
                   </div>
@@ -1243,7 +1351,7 @@ export default function InputClient() {
                 )}
               </section>
 
-              <div className="mx-auto mt-8 flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mx-auto mt-8 flex w-full flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <button
                     onClick={handlePrev}
@@ -1337,6 +1445,9 @@ function InputField({
   placeholder,
   type = "text",
   error,
+  icon,
+  unit,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -1345,40 +1456,69 @@ function InputField({
   placeholder: string;
   type?: string;
   error?: string;
+  icon?: React.ReactNode;
+  unit?: string;
+  maxLength?: number;
 }) {
   const isNumberField = type === "number";
 
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-[#163126]/82">
-        {label}
+      <span className="mb-3 flex items-center gap-2 text-sm font-black text-[#1f5c45]">
+        {icon ? (
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf7ee] text-[#2E7D5B]">
+            {icon}
+          </span>
+        ) : null}
+        <span>{label}</span>
       </span>
-      <input
-        type="text"
-        inputMode={isNumberField ? "decimal" : undefined}
-        value={value}
-        onBlur={onBlur}
-        onChange={(e) => {
-          const nextValue = e.target.value;
 
-          if (isNumberField) {
-            // 소수점 1자리까지 허용
-            if (/^\d{0,4}(\.\d{0,1})?$/.test(nextValue)) {
-              onChange(nextValue);
-            }
-            return;
-          }
-
-          onChange(nextValue);
-        }}
-        placeholder={placeholder}
-        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md placeholder:text-[#163126]/35 ${
+      <div
+        className={`relative flex h-14 items-center rounded-[18px] border bg-white transition ${
           error
-            ? "border-[#e58b8b]"
-            : "border-white/40 focus:border-[#7EE8A7]"
+            ? "border-[#e58b8b] ring-4 ring-[#fff1f1]"
+            : "border-[#dfe9e2] focus-within:border-[#46B96A] focus-within:ring-4 focus-within:ring-[#eaf7ee]"
         }`}
-      />
-      {error && <p className="mt-2 text-xs text-[#d8614d]">{error}</p>}
+      >
+        <input
+          type="text"
+          inputMode={isNumberField ? "decimal" : undefined}
+          value={value}
+          maxLength={maxLength}
+          onBlur={onBlur}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+
+            if (isNumberField) {
+              // 소수점 1자리까지 허용
+              if (/^\d{0,4}(\.\d{0,1})?$/.test(nextValue)) {
+                onChange(nextValue);
+              }
+              return;
+            }
+
+            onChange(nextValue);
+          }}
+          placeholder={placeholder}
+          className={`h-full min-w-0 flex-1 rounded-[18px] bg-transparent px-4 text-base font-semibold text-[#163126] outline-none placeholder:font-medium placeholder:text-[#163126]/35 ${
+            unit || maxLength ? "pr-16" : ""
+          }`}
+        />
+
+        {maxLength ? (
+          <span className="absolute right-4 text-base font-bold text-[#163126]/35">
+            {value.length} / {maxLength}
+          </span>
+        ) : null}
+
+        {unit ? (
+          <span className="absolute right-4 text-base font-black text-[#163126]/72">
+            {unit}
+          </span>
+        ) : null}
+      </div>
+
+      {error && <p className="mt-2 text-xs font-semibold text-[#d8614d]">{error}</p>}
     </label>
   );
 }
@@ -1390,6 +1530,7 @@ function SelectField({
   options,
   placeholder,
   error,
+  icon,
 }: {
   label: string;
   value: string;
@@ -1397,19 +1538,25 @@ function SelectField({
   options: string[];
   placeholder: string;
   error?: string;
+  icon?: React.ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-[#163126]/82">
-        {label}
+      <span className="mb-3 flex items-center gap-2 text-sm font-black text-[#1f5c45]">
+        {icon ? (
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf7ee] text-[#2E7D5B]">
+            {icon}
+          </span>
+        ) : null}
+        <span>{label}</span>
       </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-12 w-full rounded-2xl border bg-white/76 px-4 text-sm text-[#163126] outline-none backdrop-blur-md sm:h-[52px] md:h-14 md:px-5 ${
+        className={`h-14 w-full rounded-[18px] border bg-white px-4 text-base font-semibold text-[#163126] outline-none transition placeholder:text-[#163126]/35 md:px-5 ${
           error
-            ? "border-[#e58b8b] focus:border-[#d8614d]"
-            : "border-white/40 focus:border-[#7EE8A7]"
+            ? "border-[#e58b8b] ring-4 ring-[#fff1f1] focus:border-[#d8614d]"
+            : "border-[#dfe9e2] focus:border-[#46B96A] focus:ring-4 focus:ring-[#eaf7ee]"
         }`}
       >
         <option value="">{placeholder}</option>
@@ -1435,7 +1582,7 @@ function YesNoToggle({
 }) {
   return (
     <div>
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {(["예", "아니오"] as const).map((item) => {
           const active = value === item;
           return (
@@ -1443,12 +1590,12 @@ function YesNoToggle({
               key={item}
               type="button"
               onClick={() => onChange(item)}
-              className={`rounded-2xl px-5 py-3 text-sm font-semibold transition ${
+              className={`flex h-14 items-center justify-center rounded-[18px] border px-5 text-sm font-black transition ${
                 active
-                  ? "bg-[#163126] text-white shadow-[0_12px_24px_rgba(22,49,38,0.12)]"
-                  : error
-                  ? "border border-[#e58b8b] bg-white/76 text-[#163126]/70"
-                  : "border border-white/40 bg-white/76 text-[#163126]/70"
+                  ? "border-[#2E7D5B] bg-[#2E7D5B] text-white shadow-[0_12px_24px_rgba(46,125,91,0.18)]"
+                : error
+                  ? "border-[#e58b8b] bg-[#fff8f8] text-[#d8614d]"
+                  : "border-[#dfe9e2] bg-white text-[#163126]/68 hover:border-[#46B96A]/45 hover:bg-[#f2faf4] hover:text-[#1f5c45]"
               }`}
             >
               {item}
@@ -1486,8 +1633,8 @@ function HabitBlock({
   detailError?: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-white/40 bg-white/48 p-4 backdrop-blur-xl md:rounded-[28px] md:p-5">
-      <p className="mb-3 text-sm font-medium text-[#163126]/85">{title}</p>
+    <div className="rounded-[24px] border border-[#dfe9e2] bg-[#fbfdfb] p-4 transition hover:border-[#46B96A]/25 md:rounded-[28px] md:p-5">
+      <p className="mb-4 text-sm font-black text-[#163126]">{title}</p>
       <YesNoToggle value={value} onChange={onChange} error={error} />
 
       {value === "예" && (
@@ -1514,18 +1661,24 @@ function ReviewCard({
   items: [string, string][];
 }) {
   return (
-    <div className="rounded-[24px] border border-white/40 bg-white/48 p-4 backdrop-blur-xl md:rounded-[28px] md:p-5">
-      <h3 className="text-lg font-bold text-[#163126]">{title}</h3>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+    <div className="rounded-[26px] border border-[#dfe9e2] bg-[#fbfdfb] p-5 transition hover:border-[#46B96A]/25 md:rounded-[30px] md:p-6">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf7ee] text-sm font-black text-[#2E7D5B]">
+          ✓
+        </span>
+        <p className="text-lg font-black text-[#163126]">{title}</p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
         {items.map(([label, value]) => (
           <div
             key={label}
-            className="rounded-2xl border border-white/30 bg-white/60 px-4 py-3"
+            className="rounded-[18px] border border-[#e3ede6] bg-white px-4 py-4 transition hover:-translate-y-0.5 hover:border-[#46B96A]/30 hover:shadow-[0_10px_24px_rgba(46,125,91,0.08)]"
           >
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#2E7D5B]">
+            <p className="text-[11px] font-black tracking-[0.18em] text-[#2E7D5B]">
               {label}
             </p>
-            <p className="mt-1 text-sm font-semibold text-[#163126]">
+            <p className="mt-2 text-base font-black text-[#163126]">
               {value || "-"}
             </p>
           </div>
