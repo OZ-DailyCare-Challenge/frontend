@@ -26,6 +26,16 @@ async function getFeed(): Promise<FeedItem[]> {
   return data.items ?? [];
 }
 
+async function postCheer(): Promise<void> {
+  const accessToken = storage.getAccessToken();
+  if (!accessToken) return;
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  await fetch(`${apiBaseUrl}/api/v1/social/feed/cheer`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
 export default function SocialFeedPage() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +48,9 @@ export default function SocialFeedPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleCheer = (key: string) => {
+  const handleCheer = async (key: string) => {
     setCheered((prev) => new Set(prev).add(key));
+    await postCheer();
   };
 
   return (
@@ -86,7 +97,7 @@ export default function SocialFeedPage() {
                 </div>
               </div>
               <button
-                onClick={() => handleCheer(key)}
+                onClick={() => void handleCheer(key)}
                 disabled={ischeered}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   ischeered
