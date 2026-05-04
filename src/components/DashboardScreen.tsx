@@ -16,8 +16,8 @@ import {
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
 import {
-  getChallengesWithFallback,
-  type Challenge as ApiChallenge,
+  getMyActiveChallenges,
+  type MyActiveChallenge,
 } from "@/src/api/challenge";
 import { getFeed, getFriendRequests, searchUsers, sendFriendRequest, type FeedItem, type UserSearchResult } from "@/src/api/social";
 
@@ -202,7 +202,7 @@ export default function DashboardScreen({ dashboardData }: Props) {
   const [shopItems, setShopItems] = useState(initialShopItems);
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [serverChallenges, setServerChallenges] = useState<ApiChallenge[]>([]);
+  const [myActiveChallenges, setMyActiveChallenges] = useState<MyActiveChallenge[]>([]);
   const [activeFeedIndex, setActiveFeedIndex] = useState(0);
   const [dragDirection, setDragDirection] = useState(0);
   const [autoSlide, setAutoSlide] = useState(true);
@@ -225,9 +225,9 @@ export default function DashboardScreen({ dashboardData }: Props) {
   }, []);
 
   useEffect(() => {
-    getChallengesWithFallback()
-      .then((res) => setServerChallenges(res.challenges ?? []))
-      .catch(() => setServerChallenges([]));
+    getMyActiveChallenges()
+      .then((res) => setMyActiveChallenges(res.challenges ?? []))
+      .catch(() => setMyActiveChallenges([]));
   }, []);
 
   const groupedFeedItems = useMemo(() => {
@@ -292,22 +292,8 @@ export default function DashboardScreen({ dashboardData }: Props) {
   }, [autoSlide, groupedFeedItems.length]);
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
-  const activeServerChallenges = useMemo(() => {
-    return serverChallenges.filter((challenge) => {
-      const status = challenge.user_challenge?.status?.toLowerCase();
-      return status === "active" || status === "in_progress";
-    });
-  }, [serverChallenges]);
-
-  const activeChallengeCount = activeServerChallenges.length;
-
-  const completedTodayCount = activeServerChallenges.filter((challenge) => {
-    const completedAt = challenge.user_challenge?.completed_at;
-    if (!completedAt) return false;
-
-    const today = new Date().toISOString().slice(0, 10);
-    return completedAt.slice(0, 10) === today;
-  }).length;
+  const activeChallengeCount = myActiveChallenges.length;
+  const completedTodayCount = 0;
 
   const dashboardChallengePercent = activeChallengeCount
     ? Math.round((completedTodayCount / activeChallengeCount) * 100)
@@ -615,14 +601,14 @@ export default function DashboardScreen({ dashboardData }: Props) {
               </div>
 
               <div className="space-y-3">
-                {activeServerChallenges.length === 0 ? (
+                {myActiveChallenges.length === 0 ? (
                   <div className="rounded-2xl bg-[#f8fbf8] px-4 py-5 text-sm text-[#163126]/50">
                     진행 중인 챌린지가 없어요.
                   </div>
                 ) : (
-                  activeServerChallenges.slice(0, 3).map((challenge) => (
+                  myActiveChallenges.slice(0, 3).map((challenge) => (
                     <div
-                      key={challenge.id}
+                      key={challenge.user_challenge_id}
                       className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
                     >
                       <div>
@@ -630,7 +616,7 @@ export default function DashboardScreen({ dashboardData }: Props) {
                           {challenge.title}
                         </p>
                         <p className="mt-1 text-xs text-[#163126]/45">
-                          {challenge.user_challenge?.current_streak ?? 0}일 연속 진행 중
+                          {challenge.current_streak}일 연속 진행 중
                         </p>
                       </div>
 
