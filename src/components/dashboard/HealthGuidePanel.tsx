@@ -9,6 +9,7 @@ import {
   RotateCcw,
   HeartPulse,
   Play,
+  Sparkles,
   Timer,
   Volume2,
   VolumeX,
@@ -51,6 +52,59 @@ const buddyTips = [
     description:
       "수면 전 스마트폰 사용을 줄이면 수면 리듬이 안정되고 다음 날 피로감이 줄어들 수 있어요.",
     accent: "bg-[#f1efff] text-[#6f5bd8]",
+  },
+];
+
+const mindCards = [
+  {
+    title: "숨을 고르는 하루",
+    message:
+      "마음이 바쁠수록 잠깐 멈춰도 괜찮아요. 깊게 숨 쉬고 다시 시작해볼까요?",
+  },
+  {
+    title: "천천히 가도 괜찮아",
+    message:
+      "속도가 아니라 방향이 중요해요. 오늘은 나에게 맞는 걸음으로 가볼까요?",
+  },
+  {
+    title: "괜찮지 않아도 괜찮아",
+    message:
+      "모든 날이 완벽할 필요는 없어요. 지금의 감정도 충분히 의미 있어요.",
+  },
+  {
+    title: "작은 변화의 시작",
+    message:
+      "큰 변화는 작은 습관에서 시작돼요. 오늘 하나만 바꿔볼까요?",
+  },
+  {
+    title: "나를 돌보는 시간",
+    message:
+      "다른 사람보다 먼저 나를 챙겨도 괜찮아요. 당신도 소중하니까요.",
+  },
+  {
+    title: "마음의 여백 만들기",
+    message:
+      "생각이 많을수록 조금 비워볼까요? 여유가 생기면 답이 보일 거예요.",
+  },
+  {
+    title: "오늘의 나를 인정하기",
+    message:
+      "잘하지 못해도 괜찮아요. 오늘도 충분히 해낸 당신이에요.",
+  },
+  {
+    title: "지금 이 순간에 집중",
+    message:
+      "과거도 미래도 잠시 내려두고 지금의 나에게 집중해볼까요?",
+  },
+  {
+    title: "괜찮은 하루로 바꾸기",
+    message:
+      "완벽하지 않아도 괜찮아요. 오늘을 ‘괜찮은 하루’로 만들어볼까요?",
+  },
+  {
+    title: "다시 시작할 용기",
+    message:
+      "어제와 달라도 괜찮아요. 오늘은 다시 시작할 수 있는 날이에요.",
   },
 ];
 
@@ -438,6 +492,7 @@ export default function HealthGuidePanel({
   const [activeTipIndex, setActiveTipIndex] = useState(0);
   const [isPageVisible, setIsPageVisible] = useState(true);
   const [meditationOpen, setMeditationOpen] = useState(false);
+  const [mindCardOpen, setMindCardOpen] = useState(false);
   const [relationOpen, setRelationOpen] = useState(false);
 
   useEffect(() => {
@@ -622,6 +677,31 @@ export default function HealthGuidePanel({
                     className="h-16 w-16 shrink-0 object-contain"
                   />
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMindCardOpen(true)}
+                  className="mt-3 flex w-full items-center justify-between gap-3 overflow-hidden rounded-[22px] border border-[#e9dfc6] bg-[linear-gradient(135deg,#fffaf0_0%,#fffdf8_52%,#f1fbf4_100%)] px-4 py-4 text-left shadow-[0_10px_24px_rgba(201,137,24,0.08)] transition hover:-translate-y-0.5 hover:border-[#d9b76b] hover:shadow-[0_14px_30px_rgba(201,137,24,0.12)]"
+                >
+                  <span className="flex min-w-0 items-start gap-2">
+                    <Sparkles
+                      size={17}
+                      className="mt-0.5 shrink-0 text-[#c98918]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[#163126]">
+                        마음 카드 타로
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-[#163126]/52">
+                        카드를 골라 오늘의 응원을 받아보세요.
+                      </span>
+                    </span>
+                  </span>
+
+                  <span className="flex h-16 w-12 shrink-0 items-center justify-center rounded-[14px] border border-[#d9b76b]/35 bg-white/80 text-lg shadow-[0_8px_18px_rgba(201,137,24,0.12)]">
+                    ✦
+                  </span>
+                </button>
               </GuideSection>
 
               <div className="min-w-0 overflow-hidden rounded-[24px] border border-dashed border-[#163126]/12 bg-[#f3f7f4]">
@@ -686,6 +766,11 @@ export default function HealthGuidePanel({
       <MeditationModal
         open={meditationOpen}
         onClose={() => setMeditationOpen(false)}
+      />
+
+      <MindCardModal
+        open={mindCardOpen}
+        onClose={() => setMindCardOpen(false)}
       />
     </>
   );
@@ -1018,6 +1103,157 @@ function ResultRange({
         {label}
       </p>
       <p className="mt-1 text-xs font-semibold text-[#163126]/48">{range}</p>
+    </div>
+  );
+}
+
+function MindCardModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [cardOrder, setCardOrder] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setSelectedIndex(null);
+    setCardOrder(
+      mindCards
+        .map((_, index) => index)
+        .sort(() => Math.random() - 0.5)
+    );
+  }, [open]);
+
+  if (!open) return null;
+
+  const selectedCard =
+    selectedIndex !== null ? mindCards[selectedIndex] : null;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#163126]/28 px-4 py-6 backdrop-blur-sm">
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+
+      <section className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[30px] border border-[#163126]/10 bg-[#fffdf8] shadow-[0_28px_90px_rgba(22,49,38,0.24)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[#163126]/8 bg-white/72 px-5 py-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#c98918]">
+              mind card tarot
+            </p>
+            <h3 className="mt-1 text-lg font-black text-[#163126]">
+              오늘의 마음 카드
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#163126]/10 bg-white text-[#163126] transition hover:bg-[#f6faf7]"
+            aria-label="마음 카드 닫기"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="overflow-auto px-5 py-6">
+          {!selectedCard ? (
+            <>
+              <p className="mx-auto max-w-md break-keep text-center text-sm font-semibold leading-6 text-[#163126]/62">
+                마음이 끌리는 카드를 하나 골라보세요. 선택한 카드에는 오늘
+                나에게 필요한 응원의 문장이 담겨 있어요.
+              </p>
+
+              <div className="relative mx-auto mt-7 h-[250px] w-full max-w-[560px] overflow-visible">
+                {cardOrder.map((cardIndex, index) => (
+                  <motion.button
+                    key={`${cardIndex}-${index}`}
+                    type="button"
+                    initial={{
+                      opacity: 0,
+                      y: 18,
+                      rotate: -10 + index * 2.2,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 26 + Math.abs(index - 4.5) * 5,
+                      rotate: -10 + index * 2.2,
+                    }}
+                    transition={{
+                      opacity: { delay: index * 0.04 },
+                      y: { duration: 0.08 },
+                      rotate: { duration: 0 },
+                    }}
+                    whileHover={{
+                      y: 8 + Math.abs(index - 4.5) * 5,
+                      rotate: -10 + index * 2.2,
+                    }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => setSelectedIndex(cardIndex)}
+                    className="group absolute left-1/2 top-0 aspect-[3/4.6] w-[88px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#2E7D5B]/18 bg-[#eaf7ee] bg-cover bg-center p-2 shadow-[0_18px_34px_rgba(46,125,91,0.16)] transition-colors hover:border-[#2E7D5B]/70 hover:shadow-[0_18px_34px_rgba(46,185,106,0.22)] sm:w-[104px]"
+                    style={{
+                      backgroundImage: "url('/images/brush-green.png')",
+                      marginLeft: `${(index - 4.5) * 34}px`,
+                    }}
+                  >
+                    <span className="absolute inset-0 bg-white/18" />
+                    <span className="absolute inset-2 rounded-[16px] border border-white/58" />
+                    <span className="absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/74 text-xl text-[#2E7D5B] shadow-[0_8px_18px_rgba(46,125,91,0.12)] transition group-hover:scale-110">
+                      ✦
+                    </span>
+                    <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[10px] font-black uppercase tracking-[0.18em] text-[#1f5c45]/72">
+                      buddy
+                    </span>
+                  </motion.button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 16, rotateY: -24 }}
+              animate={{ opacity: 1, y: 0, rotateY: 0 }}
+              className="mx-auto max-w-md text-center"
+            >
+              <div
+                className="relative mx-auto flex aspect-[3/4.1] w-[240px] flex-col items-center justify-center overflow-hidden rounded-[28px] border border-white bg-cover bg-center px-5 py-6 shadow-[0_22px_44px_rgba(201,137,24,0.16)]"
+                style={{
+                  backgroundImage: "url('/images/buddy-background.png')",
+                }}
+              >
+                <div className="absolute inset-0 bg-white/14" />
+                <div className="relative z-10 flex w-[72%] flex-col items-center rounded-[18px] border border-white bg-white/70 px-3.5 py-4 backdrop-blur-[0.5px]">
+                  <Sparkles size={22} className="text-[#c98918]" />
+                  <p className="mt-3 break-keep text-lg font-black leading-7 text-[#1f5c45]">
+                    {selectedCard.title}
+                  </p>
+                  <p className="mt-3 break-keep text-xs font-semibold leading-6 text-[#163126]/64">
+                    {selectedCard.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedIndex(null)}
+                  className="rounded-full border border-[#163126]/10 bg-white px-5 py-3 text-sm font-bold text-[#163126]/70 transition hover:bg-[#f6faf7]"
+                >
+                  다시 고르기
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full bg-[#2E7D5B] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#26724f]"
+                >
+                  확인
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
