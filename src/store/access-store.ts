@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { getDashboard } from "@/src/api/user";
 import { getHealthRecords } from "@/src/api/health";
 import { getAnalysisHistory } from "@/src/api/analysis";
 import {
@@ -43,6 +44,7 @@ type AccessStore = {
   syncAccessFromServer: () => Promise<void>;
   markAnalysisComplete: (user?: UserInfo | null) => void;
   setMemberProfileOnly: (user?: UserInfo | null) => void;
+  updateStoredProfile: (user: UserInfo) => void;
   clearClientSession: () => void;
 };
 
@@ -61,6 +63,16 @@ function normalizeProfile(user: UserInfo | null) {
   return {
     displayName: user?.nickname || user?.name || "버디",
     profileImage: user?.profile_image || user?.picture || "",
+  };
+}
+
+function normalizeUserInfo(user: unknown): UserInfo {
+  const source = user && typeof user === "object" ? (user as UserInfo) : {};
+  const ageValue = Number(source.age);
+
+  return {
+    ...source,
+    age: Number.isFinite(ageValue) ? ageValue : undefined,
   };
 }
 
@@ -271,7 +283,8 @@ export const useAccessStore = create<AccessStore>((set, get) => ({
     }
 
     try {
-      const [recordsRes, analysisRes] = await Promise.all([
+      const [dashboardRes, recordsRes, analysisRes] = await Promise.all([
+        getDashboard().catch(() => null),
         getHealthRecords().catch(() => []),
         getAnalysisHistory().catch(() => ({ items: [] })),
       ]);
@@ -287,6 +300,10 @@ export const useAccessStore = create<AccessStore>((set, get) => ({
 
       saveAccessSnapshot(snapshot);
       applyHealthFlowBySnapshot(snapshot);
+
+      if (dashboardRes && typeof dashboardRes === "object") {
+        storage.setUser(normalizeUserInfo(dashboardRes));
+      }
 
       const storedUser = storage.getUser();
       const profile = normalizeProfile(storedUser);
@@ -377,6 +394,19 @@ export const useAccessStore = create<AccessStore>((set, get) => ({
       user: resolvedUser,
       hasHealthRecord: false,
       hasHealthAnalysis: false,
+    });
+  },
+
+  updateStoredProfile: (user) => {
+    storage.setUser(user);
+
+    const storedUser = storage.getUser();
+    const profile = normalizeProfile(storedUser);
+
+    set({
+      displayName: profile.displayName,
+      profileImage: profile.profileImage,
+      user: storedUser,
     });
   },
 
