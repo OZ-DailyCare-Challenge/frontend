@@ -866,13 +866,9 @@ export default function ChallengeScreen() {
         input_value: inputValue ?? "",
       };
     } else if (verificationType === "cv") {
-      if (typeof cvResultId !== "number") {
-        throw new Error("cv_result_id를 찾을 수 없습니다.");
-      }
-
       payload = {
         verification_type: "cv",
-        cv_result_id: cvResultId,
+        ...(typeof cvResultId === "number" ? { cv_result_id: cvResultId } : {}),
       };
     } else {
       payload = {
