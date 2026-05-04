@@ -9,5 +9,8 @@ export function resetClientAuthState(): void {
   storage.clearGuestFlow();
 
   localStorage.removeItem("myhealthbuddy-challenge-store");
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith("challenge-list-cache:"))
+    .forEach((key) => localStorage.removeItem(key));
   sessionStorage.removeItem("health-ai-missions");
 }

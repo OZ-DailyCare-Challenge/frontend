@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/src/components/AppShell";
 import GrowthRecordScreen, {
@@ -40,9 +40,11 @@ type AnalysisHistoryLike = {
 type ChallengeLike = {
   id: number | string;
   title?: string;
+  description?: string;
   currentStreak?: number;
   status?: string;
   logs?: Array<boolean | null>;
+  lastSubmittedDate?: string | null;
 };
 
 const extractArray = (res: unknown): HealthRecord[] => {
@@ -79,6 +81,16 @@ const toCalendarKey = (value?: string) => {
   if (Number.isNaN(date.getTime())) return null;
 
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+};
+
+const toDateKey = (date: Date) => {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 };
 
 const buildWeeklyChallenge = (challenges: ChallengeLike[]) => {
@@ -123,6 +135,128 @@ const buildBadgesFromChallenges = (challenges: ChallengeLike[]) => {
   });
 };
 
+const buildWeeklyChallengeForChallenge = (challenge: ChallengeLike) => {
+  const labels = ["월", "화", "수", "목", "금", "토", "일"];
+  const today = new Date();
+  const currentDay = today.getDay();
+  const monday = new Date(today);
+  const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+  const successDates = new Set<string>();
+  const logs = challenge.logs ?? [];
+  const lastSubmittedDate = challenge.lastSubmittedDate;
+
+  monday.setDate(today.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  if (lastSubmittedDate) {
+    const lastDate = new Date(lastSubmittedDate);
+
+    if (!Number.isNaN(lastDate.getTime())) {
+      const lastFilledIndex = logs.reduce(
+        (latestIndex, log, index) => (log !== null ? index : latestIndex),
+        -1
+      );
+
+      if (lastFilledIndex !== -1) {
+        logs.forEach((log, index) => {
+          if (log !== true) return;
+
+          const date = addDays(lastDate, index - lastFilledIndex);
+          successDates.add(toDateKey(date));
+        });
+      }
+    }
+  }
+
+  return labels.map((label, index) => {
+    const targetDate = new Date(monday);
+    targetDate.setDate(monday.getDate() + index);
+
+    return {
+      day: label,
+      value: successDates.has(toDateKey(targetDate)) ? 1 : 0,
+    };
+  });
+};
+
+const buildChallengeSummaries = (challenges: ChallengeLike[]) => {
+  return challenges
+    .filter((challenge) => challenge.status !== "locked")
+    .map((challenge) => ({
+      id: String(challenge.id),
+      title: challenge.title || "챌린지",
+      description: challenge.description || "오늘 인증하고 기록을 이어가세요.",
+      icon: getChallengeStickerIcon(challenge.title),
+      weekly: buildWeeklyChallengeForChallenge(challenge),
+    }));
+};
+
+const getChallengeStickerIcon = (title?: string) => {
+  const value = title ?? "";
+
+  if (value.includes("저염") || value.includes("나트륨")) return "🧂";
+  if (value.includes("포화지방") || value.includes("지방")) return "🥗";
+  if (value.includes("당")) return "🍬";
+  if (value.includes("야식")) return "🌙";
+  if (value.includes("유산소") || value.includes("운동")) return "👟";
+  if (value.includes("걸") || value.includes("보")) return "🚶";
+  if (value.includes("물")) return "💧";
+  if (value.includes("식후")) return "🍃";
+
+  return "✓";
+};
+
+const getChallengeSuccessDates = (challenges: ChallengeLike[]) => {
+  const successDates = new Set<string>();
+
+  challenges.forEach((challenge) => {
+    const logs = challenge.logs ?? [];
+    const lastSubmittedDate = challenge.lastSubmittedDate;
+    if (!lastSubmittedDate) return;
+
+    const lastDate = new Date(lastSubmittedDate);
+    if (Number.isNaN(lastDate.getTime())) return;
+
+    const lastFilledIndex = logs.reduce(
+      (latestIndex, log, index) => (log !== null ? index : latestIndex),
+      -1
+    );
+
+    if (lastFilledIndex === -1) return;
+
+    logs.forEach((log, index) => {
+      if (log !== true) return;
+
+      const date = addDays(lastDate, index - lastFilledIndex);
+      successDates.add(toDateKey(date));
+    });
+  });
+
+  return successDates;
+};
+
+const getIntegratedStreakDays = (challenges: ChallengeLike[]) => {
+  const sortedSuccessDates = [...getChallengeSuccessDates(challenges)]
+    .map((key) => ({ key, time: new Date(key).getTime() }))
+    .filter((item) => Number.isFinite(item.time))
+    .sort((a, b) => a.time - b.time);
+
+  if (sortedSuccessDates.length === 0) return 0;
+
+  let streak = 1;
+
+  for (let index = sortedSuccessDates.length - 1; index > 0; index -= 1) {
+    const current = sortedSuccessDates[index];
+    const previous = sortedSuccessDates[index - 1];
+
+    if (current.time - previous.time !== 24 * 60 * 60 * 1000) break;
+
+    streak += 1;
+  }
+
+  return streak;
+};
+
 const buildBadgeCalendar = (
   healthRecords: HealthRecord[],
   challenges: ChallengeLike[]
@@ -134,6 +268,7 @@ const buildBadgeCalendar = (
   });
 
   const stickers: GrowthBadgeSticker[] = [];
+  const challengeSuccessDates = getChallengeSuccessDates(challenges);
 
   sortedRecords.forEach((record, index) => {
     const key = toCalendarKey(record.created_at ?? record.recorded_at);
@@ -167,32 +302,85 @@ const buildBadgeCalendar = (
     });
   });
 
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
-
-  const challengeBadges: { name: string; icon: string }[] = [];
   challenges.forEach((challenge) => {
-    const successCount = (challenge.logs ?? []).filter((log) => log === true).length;
-    if (successCount > 0) {
-      challengeBadges.push({
+    const logs = challenge.logs ?? [];
+    const lastSubmittedDate = challenge.lastSubmittedDate;
+    if (!lastSubmittedDate) return;
+
+    const lastDate = new Date(lastSubmittedDate);
+    if (Number.isNaN(lastDate.getTime())) return;
+
+    const lastFilledIndex = logs.reduce(
+      (latestIndex, log, index) => (log !== null ? index : latestIndex),
+      -1
+    );
+
+    if (lastFilledIndex === -1) return;
+
+    logs.forEach((log, index) => {
+      if (log !== true) return;
+
+      const date = addDays(lastDate, index - lastFilledIndex);
+      const key = toDateKey(date);
+
+      const badge = {
         name: challenge.title || "챌린지 실천",
-        icon: "🏅",
+        icon: getChallengeStickerIcon(challenge.title),
+      };
+
+      const existing = stickers.find((item) => item.date === key);
+      if (existing) {
+        existing.badges.push(badge);
+        return;
+      }
+
+      stickers.push({
+        date: key,
+        badges: [badge],
       });
-    }
+    });
   });
 
-  if (challengeBadges.length > 0) {
-    const existing = stickers.find((item) => item.date === todayKey);
+  const sortedSuccessDates = [...challengeSuccessDates]
+    .map((key) => ({ key, time: new Date(key).getTime() }))
+    .filter((item) => Number.isFinite(item.time))
+    .sort((a, b) => a.time - b.time);
+  const streakDates = new Set<string>();
+  let streakRun: typeof sortedSuccessDates = [];
 
-    if (existing) {
-      existing.badges.push(...challengeBadges.slice(0, 4));
-    } else {
-      stickers.push({
-        date: todayKey,
-        badges: challengeBadges.slice(0, 4),
-      });
+  const flushStreakRun = () => {
+    if (streakRun.length < 2) return;
+    streakRun.forEach((item) => streakDates.add(item.key));
+  };
+
+  sortedSuccessDates.forEach((item) => {
+    const previous = streakRun[streakRun.length - 1];
+
+    if (
+      previous &&
+      item.time - previous.time !== 24 * 60 * 60 * 1000
+    ) {
+      flushStreakRun();
+      streakRun = [];
     }
-  }
+
+    streakRun.push(item);
+  });
+  flushStreakRun();
+
+  streakDates.forEach((date) => {
+    const existing = stickers.find((item) => item.date === date);
+    if (existing) {
+      existing.streak = true;
+      return;
+    }
+
+    stickers.push({
+      date,
+      streak: true,
+      badges: [],
+    });
+  });
 
   return stickers;
 };
@@ -208,12 +396,18 @@ const buildViewData = (
     dashboardRes?.nickname ??
     dashboardRes?.user?.nickname ??
     storedUser?.nickname ??
+    dashboardRes?.name ??
+    dashboardRes?.user?.name ??
+    storedUser?.name ??
     "버디";
 
   const profileImage =
     dashboardRes?.profile_image ??
     dashboardRes?.user?.profile_image ??
     storedUser?.profile_image ??
+    dashboardRes?.picture ??
+    dashboardRes?.user?.picture ??
+    storedUser?.picture ??
     "";
 
   const point = Number(
@@ -280,15 +474,13 @@ const buildViewData = (
     firstRecord?.created_at ?? firstRecord?.recorded_at
   );
 
-  const streakDays = Math.max(
-    0,
-    ...challenges.map((challenge) => Number(challenge.currentStreak ?? 0))
-  );
+  const streakDays = getIntegratedStreakDays(challenges);
 
   const badges = buildBadgesFromChallenges(challenges);
   const earnedBadgeCount = badges.filter((badge) => badge.earned).length;
   const badgeCalendar = buildBadgeCalendar(sortedRecords, challenges);
   const weeklyChallenge = buildWeeklyChallenge(challenges);
+  const challengeItems = buildChallengeSummaries(challenges);
 
   return {
     nickname,
@@ -302,15 +494,129 @@ const buildViewData = (
     cardioAgeHistory,
     healthHistory,
     weeklyChallenge,
+    challengeItems,
     earnedBadgeCount,
     badges,
     badgeCalendar,
   };
 };
 
+const mockGrowthData: GrowthRecordViewData = {
+  nickname: "d",
+  profileImage: "",
+  point: 120,
+  actualAge: 26,
+  firstRecordLabel: "4월 30일부터 기록 중",
+  streakDays: 3,
+  badgeCount: 2,
+  cardioAgeHistory: [
+    { label: "4/1", value: 27 },
+    { label: "4/8", value: 26 },
+    { label: "4/15", value: 25 },
+    { label: "4/22", value: 24 },
+    { label: "4/30", value: 24 },
+  ],
+  healthHistory: [
+    {
+      date: "4월 30일",
+      bp: "120/80",
+      glucose: 90,
+      cholesterol: 180,
+      cardioAge: 24,
+    },
+  ],
+  weeklyChallenge: [
+    { day: "월", value: 1 },
+    { day: "화", value: 1 },
+    { day: "수", value: 0 },
+    { day: "목", value: 0 },
+    { day: "금", value: 0 },
+    { day: "토", value: 0 },
+    { day: "일", value: 0 },
+  ],
+  challengeItems: [
+    {
+      id: "1",
+      title: "저염식",
+      description: "나트륨 섭취를 줄이고 가볍게 식사해보세요.",
+      icon: "🧂",
+      weekly: [
+        { day: "월", value: 1 },
+        { day: "화", value: 1 },
+        { day: "수", value: 0 },
+        { day: "목", value: 0 },
+        { day: "금", value: 0 },
+        { day: "토", value: 0 },
+        { day: "일", value: 0 },
+      ],
+    },
+    {
+      id: "2",
+      title: "포화지방 줄이기",
+      description: "튀김과 고지방 메뉴를 줄이는 챌린지예요.",
+      icon: "🥗",
+      weekly: [
+        { day: "월", value: 0 },
+        { day: "화", value: 1 },
+        { day: "수", value: 0 },
+        { day: "목", value: 0 },
+        { day: "금", value: 0 },
+        { day: "토", value: 0 },
+        { day: "일", value: 0 },
+      ],
+    },
+    {
+      id: "3",
+      title: "유산소 운동 20분",
+      description: "가볍게 숨이 찰 정도로 20분 움직여보세요.",
+      icon: "👟",
+      weekly: [
+        { day: "월", value: 0 },
+        { day: "화", value: 0 },
+        { day: "수", value: 0 },
+        { day: "목", value: 0 },
+        { day: "금", value: 0 },
+        { day: "토", value: 0 },
+        { day: "일", value: 0 },
+      ],
+    },
+  ],
+  earnedBadgeCount: 2,
+  badges: [
+    { name: "저염식", icon: "🧂", earned: true },
+    { name: "포화지방 줄이기", icon: "🥗", earned: true },
+    { name: "당류 줄이기", icon: "🍬", earned: false },
+    { name: "야식 금지", icon: "🌙", earned: false },
+    { name: "유산소 운동 20분", icon: "👟", earned: false },
+    { name: "하루 7,000보", icon: "🚶", earned: false },
+    { name: "식후 15분 걷기", icon: "🍃", earned: false },
+    { name: "물 2L 마시기", icon: "💧", earned: false },
+  ],
+  badgeCalendar: [
+    { date: "2026-5-1", badges: [{ name: "저염식", icon: "🧂" }] },
+    {
+      date: "2026-5-3",
+      streak: true,
+      badges: [{ name: "포화지방 줄이기", icon: "🥗" }],
+    },
+    {
+      date: "2026-5-4",
+      streak: true,
+      badges: [
+        { name: "저염식", icon: "🧂" },
+        { name: "포화지방 줄이기", icon: "🥗" },
+        { name: "유산소 운동 20분", icon: "👟" },
+      ],
+    },
+    { date: "2026-4-29", badges: [{ name: "운동 기록", icon: "💪" }] },
+    { date: "2026-4-30", badges: [{ name: "첫 기록", icon: "🌱" }] },
+  ],
+};
+
 export default function GrowthPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
+  const healthRecordsRef = useRef<HealthRecord[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [viewData, setViewData] = useState<GrowthRecordViewData | null>(null);
@@ -318,6 +624,16 @@ export default function GrowthPage() {
   useEffect(() => {
     const init = async () => {
       try {
+        const isMockPreview =
+          process.env.NODE_ENV === "development" &&
+          new URLSearchParams(window.location.search).get("mock") === "1";
+
+        if (isMockPreview) {
+          setViewData(mockGrowthData);
+          setLoading(false);
+          return;
+        }
+
         const token = storage.getAccessToken();
 
         if (!token) {
@@ -347,6 +663,7 @@ export default function GrowthPage() {
           : (useChallengeStore.getState().challenges ?? []) as ChallengeLike[];
 
         const records = extractArray(healthRes);
+        healthRecordsRef.current = records;
         if (records.length === 0) {
           router.replace("/input");
           return;
@@ -387,12 +704,14 @@ export default function GrowthPage() {
 
         return {
           ...prev,
-          streakDays: Math.max(
-            0,
-            ...challenges.map((challenge) => Number(challenge.currentStreak ?? 0))
-          ),
+          streakDays: getIntegratedStreakDays(challenges),
           weeklyChallenge: buildWeeklyChallenge(challenges),
+          challengeItems: buildChallengeSummaries(challenges),
           badges,
+          badgeCalendar: buildBadgeCalendar(
+            healthRecordsRef.current,
+            challenges
+          ),
           badgeCount: earnedBadgeCount,
           earnedBadgeCount,
         };

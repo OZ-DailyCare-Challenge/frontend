@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LogIn, LogOut } from "lucide-react";
 import Sidebar from "./Sidebar";
 import BottomNav from "./BottomNav";
 import { logoutUser } from "@/src/api/user";
@@ -75,30 +76,54 @@ export default function AppShell({
   };
 
   return (
-    <div className="min-h-screen bg-[#f7faf8]">
+    <div className="min-h-screen bg-white">
       <Sidebar onRequireLogin={onRequireLogin} />
 
-      <div className="min-h-screen md:pl-[260px]">
+      <div className="min-h-screen min-w-0 overflow-x-hidden lg:pl-[260px]">
         <div className="flex min-h-screen min-w-0 flex-col">
-          <header className="sticky top-0 z-20 border-b border-[#e7efe9] bg-[#f7faf8]/88 backdrop-blur-md">
-            <div className="flex items-center justify-between px-4 py-4 md:px-6 xl:px-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#2E7D5B]">
-                MyHealthBuddy
-              </p>
-
+          <header className="sticky top-0 z-20 border-b border-[#163126]/6 bg-white/88 backdrop-blur-md">
+            <div className="flex items-center justify-between px-4 py-3 md:justify-end md:px-6 xl:px-8">
               <button
-                onClick={handleAuthButtonClick}
-                disabled={!hydrated || loggingOut}
-                className="shrink-0 rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-sm font-medium text-[#163126] transition hover:bg-[#f8fbf8] disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                onClick={() => router.push("/")}
+                className="flex items-center gap-2 text-left md:hidden"
               >
-                {!hydrated
-                  ? ""
-                  : isLoggedIn
-                  ? loggingOut
-                    ? "로그아웃 중..."
-                    : "로그아웃"
-                  : "로그인"}
+                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl bg-[#f7fbf8]">
+                  <img
+                    src="/images/buddy-face.png"
+                    alt=""
+                    className="h-9 w-9 object-cover"
+                  />
+                </span>
+                <span>
+                  <span className="block text-sm font-black text-[#1f5c45]">
+                    MyHealthBuddy
+                  </span>
+                  <span className="block text-[10px] font-bold text-[#163126]/45">
+                    건강한 하루를 함께 기록해요
+                  </span>
+                </span>
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAuthButtonClick}
+                  disabled={!hydrated || loggingOut}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#163126]/10 bg-white px-3.5 py-2 text-xs font-bold text-[#163126]/70 transition hover:-translate-y-0.5 hover:bg-[#f7fbf8] hover:text-[#163126] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {!hydrated ? null : isLoggedIn ? (
+                    <>
+                      <LogOut size={14} />
+                      {loggingOut ? "로그아웃 중..." : "로그아웃"}
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={14} />
+                      로그인
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {showGuestBanner && (
@@ -120,7 +145,7 @@ export default function AppShell({
             )}
           </header>
 
-          <main className="min-w-0 flex-1 px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-8 xl:px-8 xl:py-8">
+          <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-8 xl:px-8 xl:py-8">
             {title ? (
               <div className="mb-6">
                 <h1 className="text-2xl font-bold text-[#163126] md:text-3xl">

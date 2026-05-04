@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowRight,
   LayoutGrid,
   Clock3,
   CheckCircle2,
@@ -11,6 +13,7 @@ import {
   RotateCcw,
   X,
   Camera,
+  Trophy,
 } from "lucide-react";
 import {
   getChallengesWithFallback,
@@ -27,7 +30,12 @@ import {
   requestExerciseVerification,
   waitExerciseVerificationCompletion,
 } from "@/src/api/exercise";
-import { notificationStorage } from "@/src/utils/notificationStorage";
+import { storage } from "@/src/utils/storage";
+import { useChallengeStore } from "@/src/store/challenge-store";
+import type {
+  Challenge as StoredChallenge,
+  ChallengeCategory,
+} from "@/src/lib/challenge-data";
 
 type ChallengeStatus = "in_progress" | "done" | "locked";
 type VerificationType = "check" | "number" | "photo";
@@ -51,6 +59,47 @@ type ChallengeLogPayload =
       verification_type: "cv";
       cv_result_id?: number;
     };
+
+function getNestedValue(source: unknown, path: string[]) {
+  return path.reduce<unknown>((current, key) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, source);
+}
+
+function normalizeCvResultId(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) return numericValue;
+  }
+
+  return undefined;
+}
+
+function extractCvResultId(verifyResult: unknown): number | undefined {
+  const candidates = [
+    getNestedValue(verifyResult, ["cv_result_id"]),
+    getNestedValue(verifyResult, ["result_id"]),
+    getNestedValue(verifyResult, ["id"]),
+    getNestedValue(verifyResult, ["data", "cv_result_id"]),
+    getNestedValue(verifyResult, ["data", "result_id"]),
+    getNestedValue(verifyResult, ["data", "id"]),
+    getNestedValue(verifyResult, ["result", "cv_result_id"]),
+    getNestedValue(verifyResult, ["result", "result_id"]),
+    getNestedValue(verifyResult, ["result", "id"]),
+    getNestedValue(verifyResult, ["result", "data", "cv_result_id"]),
+    getNestedValue(verifyResult, ["result", "data", "result_id"]),
+    getNestedValue(verifyResult, ["result", "data", "id"]),
+  ];
+
+  for (const candidate of candidates) {
+    const id = normalizeCvResultId(candidate);
+    if (id !== undefined) return id;
+  }
+
+  return undefined;
+}
 
 type ChallengeItem = {
   id: number | string;
@@ -88,6 +137,18 @@ type StoredActiveChallengeMap = Record<
 
 const dayLabels = Array.from({ length: 30 }, (_, i) => `${i + 1}일`);
 const ACTIVE_CHALLENGES_STORAGE_KEY = "active-user-challenges-v1";
+
+function getChallengeCacheKey() {
+  const user = storage.getUser();
+  const userKey = user?.id ?? user?.email ?? "guest";
+
+  return `challenge-list-cache:${userKey}`;
+}
+
+function removeCurrentChallengeCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(getChallengeCacheKey());
+}
 
 function getStoredActiveChallengeMap(): StoredActiveChallengeMap {
   if (typeof window === "undefined") return {};
@@ -218,7 +279,9 @@ function mapApiChallengeToUi(
 
 function buildLogUpdatedChallenge(
   challenge: ChallengeItem,
-  success: boolean
+  success: boolean,
+  currentStreak?: number,
+  isCompleted?: boolean
 ): ChallengeItem {
   const nextLogs = [...challenge.logs];
   const firstEmptyIndex = nextLogs.findIndex((log) => log === null);
@@ -229,7 +292,9 @@ function buildLogUpdatedChallenge(
 
   const successCount = nextLogs.filter((v) => v === true).length;
   const nextStatus: ChallengeStatus =
-    successCount >= challenge.completionWindow ? "done" : "in_progress";
+    isCompleted || successCount >= challenge.completionWindow
+      ? "done"
+      : "in_progress";
 
   const nextFirstEmptyIndex = nextLogs.findIndex((log) => log === null);
   const nextCurrentDay =
@@ -243,9 +308,12 @@ function buildLogUpdatedChallenge(
     lastSubmittedDate: new Date().toISOString().slice(0, 10),
     status: nextStatus,
     currentDay: nextCurrentDay,
-    currentStreak: success
-      ? (challenge.currentStreak ?? 0) + 1
-      : challenge.currentStreak ?? 0,
+    currentStreak:
+      typeof currentStreak === "number"
+        ? currentStreak
+        : success
+        ? (challenge.currentStreak ?? 0) + 1
+        : challenge.currentStreak ?? 0,
   };
 }
 
@@ -272,7 +340,75 @@ function removeChallengeItemFromStorage(challengeId: number) {
   setStoredActiveChallengeMap(current);
 }
 
+function mapStoreCategory(value: string): ChallengeCategory {
+  const normalized = value.toLowerCase();
+
+  if (value.includes("운동") || normalized.includes("exercise")) {
+    return "운동";
+  }
+
+  if (
+    value.includes("생활") ||
+    normalized.includes("life") ||
+    normalized.includes("lifestyle")
+  ) {
+    return "생활습관";
+  }
+
+  return "식습관";
+}
+
+function mapChallengeItemToStore(
+  challenge: ChallengeItem
+): StoredChallenge & { currentStreak?: number } {
+  return {
+    id:
+      typeof challenge.challengeId === "number"
+        ? challenge.challengeId
+        : Number(challenge.id),
+    category: mapStoreCategory(challenge.category),
+    title: challenge.title,
+    description: challenge.description,
+    effect: challenge.effect,
+    riskTarget: challenge.riskTarget,
+    verification: challenge.verification,
+    durationDays: challenge.durationDays,
+    completionWindow: challenge.completionWindow,
+    currentDay: challenge.currentDay,
+    status: challenge.status,
+    logs: challenge.logs,
+    lastSubmittedDate: challenge.lastSubmittedDate,
+    recommended: challenge.recommended || challenge.aiRecommended,
+    currentStreak: challenge.currentStreak ?? 0,
+  };
+}
+
+function syncChallengeStore(challenges: ChallengeItem[]) {
+  const storedChallenges = challenges
+    .filter((challenge) => {
+      const id =
+        typeof challenge.challengeId === "number"
+          ? challenge.challengeId
+          : Number(challenge.id);
+      return Number.isFinite(id);
+    })
+    .map(mapChallengeItemToStore);
+
+  const streak = storedChallenges.reduce(
+    (total, challenge) =>
+      total + challenge.logs.filter((log) => log === true).length,
+    0
+  );
+
+  useChallengeStore.setState({
+    challenges: storedChallenges,
+    streak,
+  });
+}
+
 export default function ChallengeScreen() {
+  const searchParams = useSearchParams();
+  const focusChallengeId = searchParams.get("focus");
   const [baseChallenges, setBaseChallenges] = useState<ChallengeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingAction, setLoadingAction] = useState(false);
@@ -285,6 +421,13 @@ export default function ChallengeScreen() {
   const [pulseChallengeId, setPulseChallengeId] = useState<
     number | string | null
   >(null);
+  const [celebration, setCelebration] = useState<{
+    challengeId: number | string;
+    title: string;
+    streak: number;
+    completed: boolean;
+    point: number;
+  } | null>(null);
   const [ragRecommendations, setRagRecommendations] = useState<RecommendItem[]>(
     []
   );
@@ -292,6 +435,7 @@ export default function ChallengeScreen() {
   const [photoSubmitting, setPhotoSubmitting] = useState(false);
   const [photoError, setPhotoError] = useState("");
   const [exerciseVerifyOpen, setExerciseVerifyOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false);
 
   const detailRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +461,8 @@ export default function ChallengeScreen() {
 
   useEffect(() => {
     const init = async () => {
+      const cacheKey = getChallengeCacheKey();
+
       try {
         setLoading(true);
 
@@ -350,6 +496,11 @@ export default function ChallengeScreen() {
             (challenge) => mapApiChallengeToUi(challenge, storedMap)
           );
           setBaseChallenges(mapped);
+          syncChallengeStore(mapped);
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(cacheKey, JSON.stringify(mapped));
+          }
         } else {
           console.error("챌린지 목록 조회 실패:", challengeResponse.reason);
           setBaseChallenges([]);
@@ -390,14 +541,44 @@ export default function ChallengeScreen() {
     return mergedChallenges.filter((challenge) => challenge.status === filter);
   }, [filter, mergedChallenges]);
 
+  const startableAiRecommendations = useMemo(
+    () =>
+      mergedChallenges.filter(
+        (challenge) => challenge.aiRecommended && challenge.status === "locked"
+      ),
+    [mergedChallenges]
+  );
+
   const selectedChallenge =
     selectedId !== null
       ? mergedChallenges.find((challenge) => challenge.id === selectedId) ?? null
       : null;
 
+  const activeHeroChallenge =
+    mergedChallenges.find((challenge) => challenge.status === "in_progress") ??
+    selectedChallenge;
+
   useEffect(() => {
     if (!mergedChallenges.length) return;
     if (hasAutoSelected) return;
+
+    const focused = focusChallengeId
+      ? mergedChallenges.find(
+          (item) =>
+            String(item.id) === focusChallengeId ||
+            String(item.challengeId ?? "") === focusChallengeId
+        )
+      : null;
+
+    if (focused) {
+      setFilter("all");
+      setSelectedId(focused.id);
+      setHasAutoSelected(true);
+      requestAnimationFrame(() => {
+        detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
 
     const firstAi = mergedChallenges.find((item) => item.aiRecommended);
     if (firstAi) {
@@ -407,7 +588,7 @@ export default function ChallengeScreen() {
     }
 
     setHasAutoSelected(true);
-  }, [mergedChallenges, hasAutoSelected]);
+  }, [mergedChallenges, hasAutoSelected, focusChallengeId]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const isSubmittedToday =
@@ -418,6 +599,18 @@ export default function ChallengeScreen() {
         selectedChallenge.durationDays) *
       100
     : 0;
+  const activeHeroButtonLabel =
+    activeHeroChallenge?.status === "in_progress"
+      ? "인증하기"
+      : activeHeroChallenge?.status === "done"
+        ? "다시 시도하기"
+        : "바로 시작하기";
+  const activeHeroLabel =
+    activeHeroChallenge?.status === "in_progress"
+      ? "진행 중 챌린지"
+      : activeHeroChallenge?.status === "done"
+        ? "완료한 챌린지"
+        : "시작 전 챌린지";
 
   const handleChangeFilter = (nextFilter: FilterType) => {
     setFilter(nextFilter);
@@ -450,12 +643,52 @@ export default function ChallengeScreen() {
     setTimeout(() => setPulseChallengeId(null), 700);
   };
 
+  const triggerCelebration = ({
+    challenge,
+    streak,
+    completed,
+    point,
+  }: {
+    challenge: ChallengeItem;
+    streak: number;
+    completed: boolean;
+    point: number;
+  }) => {
+    setCelebration({
+      challengeId: challenge.id,
+      title: challenge.title,
+      streak,
+      completed,
+      point,
+    });
+    window.setTimeout(() => setCelebration(null), 2200);
+  };
+
   const updateBaseChallenge = (updatedChallenge: ChallengeItem) => {
-    setBaseChallenges((prev) =>
-      prev.map((item) =>
+    setBaseChallenges((prev) => {
+      const next = prev.map((item) =>
         item.challengeId === updatedChallenge.challengeId ? updatedChallenge : item
-      )
+      );
+      syncChallengeStore(next);
+      return next;
+    });
+  };
+
+  const refreshBaseChallengesFromServer = async () => {
+    const challengeResponse = await getChallengesWithFallback();
+    setUsingFallbackChallenges(challengeResponse.isFallback);
+
+    const activeMap = getStoredActiveChallengeMap();
+    const mapped = (challengeResponse.challenges ?? []).map((challenge) =>
+      mapApiChallengeToUi(challenge, activeMap)
     );
+
+    setBaseChallenges(mapped);
+    syncChallengeStore(mapped);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getChallengeCacheKey(), JSON.stringify(mapped));
+    }
+    return mapped;
   };
 
   const handleStartChallenge = async () => {
@@ -484,6 +717,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       persistChallengeItemToStorage(updatedChallenge);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -492,7 +726,22 @@ export default function ChallengeScreen() {
       );
     } catch (error) {
       console.error("챌린지 시작 실패:", error);
-      alert("챌린지 시작에 실패했어요.");
+
+      if (
+        error instanceof Error &&
+        (error.message.includes("409") ||
+          error.message.includes("이미 참여 중인 챌린지입니다"))
+      ) {
+        try {
+          await refreshBaseChallengesFromServer();
+          alert("이미 참여 중인 챌린지예요. 진행 상태를 동기화했어요.");
+        } catch (refreshError) {
+          console.error("챌린지 상태 재조회 실패:", refreshError);
+          alert("이미 참여 중인 챌린지예요. 화면을 새로고침해주세요.");
+        }
+      } else {
+        alert("챌린지 시작에 실패했어요.");
+      }
     } finally {
       setLoadingAction(false);
     }
@@ -523,6 +772,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       persistChallengeItemToStorage(updatedChallenge);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -531,7 +781,22 @@ export default function ChallengeScreen() {
       );
     } catch (error) {
       console.error("챌린지 재시작 실패:", error);
-      alert("챌린지 재시작에 실패했어요.");
+
+      if (
+        error instanceof Error &&
+        (error.message.includes("409") ||
+          error.message.includes("이미 참여 중인 챌린지입니다"))
+      ) {
+        try {
+          await refreshBaseChallengesFromServer();
+          alert("이미 참여 중인 챌린지예요. 진행 상태를 동기화했어요.");
+        } catch (refreshError) {
+          console.error("챌린지 상태 재조회 실패:", refreshError);
+          alert("이미 참여 중인 챌린지예요. 화면을 새로고침해주세요.");
+        }
+      } else {
+        alert("챌린지 재시작에 실패했어요.");
+      }
     } finally {
       setLoadingAction(false);
     }
@@ -567,6 +832,7 @@ export default function ChallengeScreen() {
 
       updateBaseChallenge(updatedChallenge);
       removeChallengeItemFromStorage(selectedChallenge.challengeId);
+      removeCurrentChallengeCache();
 
       alert(
         result.isFallback
@@ -604,9 +870,13 @@ export default function ChallengeScreen() {
         input_value: inputValue ?? "",
       };
     } else if (verificationType === "cv") {
+      if (typeof cvResultId !== "number") {
+        throw new Error("cv_result_id를 찾을 수 없습니다.");
+      }
+
       payload = {
         verification_type: "cv",
-        ...(typeof cvResultId === "number" ? { cv_result_id: cvResultId } : {}),
+        cv_result_id: cvResultId,
       };
     } else {
       payload = {
@@ -614,22 +884,29 @@ export default function ChallengeScreen() {
       };
     }
 
-    const { data: logResult } = await logChallengeWithFallback(challenge.userChallengeId, payload);
+    const { data: logResult } = await logChallengeWithFallback(
+      challenge.userChallengeId,
+      payload
+    );
 
     const success = true;
 
-    if (notificationStorage.isChallengeAlertOn()) {
-      if (logResult.is_completed) {
-        alert(`🎉 챌린지 달성! "${challenge.title}" 챌린지를 완료했어요!`);
-      } else {
-        alert(`✅ ${logResult.current_streak}일 연속 인증 완료!`);
-      }
-    }
-
-    const updatedChallenge = buildLogUpdatedChallenge(challenge, success);
+    const updatedChallenge = buildLogUpdatedChallenge(
+      challenge,
+      success,
+      logResult.current_streak,
+      logResult.is_completed
+    );
     updateBaseChallenge(updatedChallenge);
     persistChallengeItemToStorage(updatedChallenge);
+    removeCurrentChallengeCache();
     triggerCardPulse(challenge.id);
+    triggerCelebration({
+      challenge,
+      streak: logResult.current_streak,
+      completed: logResult.is_completed,
+      point: challenge.verification === "photo" ? 100 : 20,
+    });
   };
 
   const handleDailyCheck = async (_value: boolean) => {
@@ -640,7 +917,6 @@ export default function ChallengeScreen() {
     try {
       setLoadingAction(true);
       await submitChallengeLog(selectedChallenge);
-      alert("오늘 인증이 완료되었어요.");
     } catch (error) {
       console.error("챌린지 체크 인증 실패:", error);
       alert("오늘 인증에 실패했어요.");
@@ -666,7 +942,6 @@ export default function ChallengeScreen() {
       );
 
       setNumberInput("");
-      alert("오늘 수치 인증이 완료되었어요.");
     } catch (error) {
       console.error("챌린지 수치 인증 실패:", error);
       alert("오늘 인증에 실패했어요.");
@@ -690,14 +965,7 @@ export default function ChallengeScreen() {
 
       console.log("exercise verify result:", verifyResult);
 
-      const verifyResultRecord = verifyResult as Record<string, unknown>;
-
-      const resolvedCvResultId =
-        typeof verifyResultRecord.cv_result_id === "number"
-          ? verifyResultRecord.cv_result_id
-          : typeof verifyResultRecord.result_id === "number"
-          ? verifyResultRecord.result_id
-          : undefined;
+      const resolvedCvResultId = extractCvResultId(verifyResult);
 
       await submitChallengeLog(
         selectedChallenge,
@@ -707,7 +975,6 @@ export default function ChallengeScreen() {
 
       setPhotoUploaded(true);
       setExerciseVerifyOpen(false);
-      alert("운동 인증이 완료되었어요!");
     } catch (error) {
       console.error("운동 사진 인증 실패:", error);
       setPhotoError(
@@ -721,45 +988,167 @@ export default function ChallengeScreen() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
-      <div className="rounded-[28px] border border-[#163126]/8 bg-white/80 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.06)] backdrop-blur-xl md:p-8">
-        <div className="mb-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#2E7D5B]">
+    <section className="mx-auto w-full max-w-7xl">
+      <div className="space-y-4 rounded-[24px] bg-white px-5 py-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] transition-colors duration-300 md:px-7 md:py-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#2E7D5B]">
             challenge
           </p>
-          <h1 className="mt-3 text-2xl font-bold text-[#163126] md:text-4xl">
+          <h1 className="mt-2 text-3xl font-black text-[#163126] md:text-4xl">
             건강 챌린지
           </h1>
-          <p className="mt-3 text-sm leading-7 text-[#163126]/68 md:text-base">
+          <p className="mt-2 text-sm leading-7 text-[#163126]/62 md:text-base">
             건강 분석 결과 기반 AI 추천과 기본 챌린지를 함께 확인하고 실천할 수
             있어요.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setGuideOpen(true)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-black text-[#163126]/62 shadow-[0_10px_24px_rgba(46,125,91,0.06)] transition hover:-translate-y-0.5 hover:bg-[#f8fbf8]"
+        >
+          <Trophy size={16} />
+          챌린지 가이드
+        </button>
+      </div>
 
-        {usingFallbackChallenges && (
-          <div className="mb-6 rounded-[18px] border border-[#f3dfb2] bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6c00]">
-            현재는 임시 챌린지 목록을 보여주고 있어요. API 연결 후 실제 데이터로
-            자동 전환돼요.
-          </div>
-        )}
+      {usingFallbackChallenges && (
+        <div className="rounded-[18px] bg-[#fff7df] px-5 py-4 text-sm font-semibold text-[#8a6c00]">
+          현재는 임시 챌린지 목록을 보여주고 있어요. API 연결 후 실제 데이터로
+          자동 전환돼요.
+        </div>
+      )}
 
-        <div className="mb-6 rounded-[20px] border border-[#163126]/8 bg-[#f9fcfa] px-4 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔥</span>
+      {startableAiRecommendations.length > 0 && (
+        <section className="rounded-[18px] bg-[#f7fbf8] px-5 py-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-[#163126]">
-                {streak > 0
-                  ? `${streak}일 누적 실천 기록`
-                  : "오늘부터 건강 실천 시작하기"}
+              <p className="text-sm font-black text-[#163126]">
+                AI 추천 챌린지
               </p>
-              <p className="text-xs text-[#163126]/58 md:text-sm">
-                진행중 챌린지는 시작, 포기, 인증이 가능해요.
+              <p className="mt-1 text-xs font-semibold text-[#163126]/45">
+                아직 시작하지 않은 추천 챌린지만 보여줘요
               </p>
             </div>
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#2E7D5B]">
+              {startableAiRecommendations.length}개 추천
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {startableAiRecommendations.slice(0, 3).map((challenge) => (
+              <button
+                key={`ai-recommend-${challenge.id}`}
+                type="button"
+                onClick={() => {
+                  setFilter("all");
+                  handleSelectChallenge(challenge.id);
+                  requestAnimationFrame(() => {
+                    detailRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  });
+                }}
+                className="group rounded-[18px] bg-white px-4 py-4 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(46,125,91,0.10)]"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#eef8e9] text-2xl">
+                    {challengeIcon(challenge)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-[#fff8df] px-2.5 py-1 text-[11px] font-black text-[#8a6c00]">
+                        AI 추천
+                      </span>
+                      <span className="text-[11px] font-black uppercase tracking-[0.14em] text-[#2E7D5B]">
+                        {challenge.category}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-base font-black text-[#163126]">
+                      {challenge.title}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[#163126]/58">
+                      {challenge.aiReason || challenge.description}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-end">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#46B96A] px-3 py-2 text-xs font-black text-white transition group-hover:bg-[#35A85A]">
+                    시작하기
+                    <ArrowRight size={13} />
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="overflow-hidden rounded-[18px] bg-[#fbfdfb] px-5 py-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-center">
+          <div className="rounded-[18px] bg-[#f4fbf5] px-5 py-5">
+            <div className="flex min-h-[180px] flex-col justify-center">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#2E7D5B]">
+                  <span>🔥</span>
+                  {activeHeroLabel}
+                </div>
+                <h2 className="mt-3 text-2xl font-black text-[#163126] md:text-3xl">
+                  {activeHeroChallenge?.title ?? "하루 30분 걷기"}
+                </h2>
+                <p className="mt-2 max-w-xl text-sm font-semibold leading-7 text-[#163126]/62">
+                  {activeHeroChallenge?.description ??
+                    "작은 실천부터 시작해서 오늘의 건강 루틴을 채워보세요."}
+                </p>
+                <button
+                  onClick={() => {
+                    if (activeHeroChallenge) {
+                      handleSelectChallenge(activeHeroChallenge.id);
+                      detailRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }
+                  }}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#46B96A] px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-[#35A85A] hover:shadow-[0_14px_30px_rgba(70,185,106,0.18)]"
+                >
+                  {activeHeroButtonLabel}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[18px] bg-[#fbfdfb] px-5 py-5">
+            <p className="text-sm font-black text-[#163126]">이번 달 보상</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-[18px] bg-white px-4 py-4 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#fff4cf] text-[#f4b000]">
+                  <Trophy size={24} fill="currentColor" />
+                </div>
+                <p className="mt-3 text-2xl font-black text-[#163126]">20</p>
+                <p className="text-xs font-bold text-[#163126]/45">포인트</p>
+              </div>
+              <div className="rounded-[18px] bg-white px-4 py-4 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#e6f8ec] text-[#13a45a]">
+                  <CheckCircle2 size={24} />
+                </div>
+                <p className="mt-3 text-2xl font-black text-[#163126]">
+                  {counts.done}개
+                </p>
+                <p className="text-xs font-bold text-[#163126]/45">성공</p>
+              </div>
+            </div>
+            <p className="mt-4 rounded-full bg-[#eef8e9] px-4 py-3 text-center text-xs font-black text-[#2E7D5B]">
+              {streak > 0 ? `${streak}일 누적 실천 기록` : "오늘부터 시작"}
+            </p>
           </div>
         </div>
+      </section>
 
-        <div className="mb-6 grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
           <FilterButton
             active={filter === "all"}
             label="전체"
@@ -788,29 +1177,42 @@ export default function ChallengeScreen() {
             icon={Lock}
             onClick={() => handleChangeFilter("locked")}
           />
-        </div>
+      </div>
 
-        <div className="mb-8">
-          <div className="h-3 overflow-hidden rounded-full bg-[#163126]/8">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,760px)_minmax(360px,1fr)] xl:items-start">
+        <div className="rounded-[18px] bg-[#fbfdfb] px-5 py-5">
+          <div className="mb-4">
+            <p className="text-sm font-black text-[#163126]">추천 챌린지</p>
+            <p className="mt-1 text-xs font-semibold text-[#163126]/45">
+              현재 선택한 챌린지 진행률과 목록을 한눈에 확인해요
+            </p>
+          </div>
+
+          <div className="rounded-[18px] bg-[#f7fbf8] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black text-[#163126]">
+                현재 선택한 챌린지 진행률
+              </p>
+              <span className="text-sm font-black text-[#2E9C45]">
+                {Math.round(detailProgressPercent)}%
+              </span>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#e8efe9]">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#7EE8A7,#B7F3C9)] transition-all duration-500"
+              className="h-full rounded-full bg-[#2E9C45] transition-all duration-500"
               style={{ width: `${detailProgressPercent}%` }}
             />
+            </div>
           </div>
-          <p className="mt-2 text-xs text-[#163126]/55 md:text-sm">
-            현재 선택한 챌린지 진행률 {Math.round(detailProgressPercent)}%
-          </p>
-        </div>
 
         {loading ? (
-          <div className="rounded-[24px] border border-[#163126]/8 bg-[#f9fcfa] px-5 py-10 text-center text-sm text-[#163126]/60">
+            <div className="mt-4 rounded-[18px] bg-[#f7fbf8] px-5 py-10 text-center text-sm font-semibold text-[#163126]/60">
             챌린지 목록을 불러오는 중이에요...
           </div>
         ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,720px)_minmax(360px,1fr)] xl:items-start">
-            <div className="grid w-full max-w-[720px] grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               {filteredChallenges.length === 0 ? (
-                <div className="sm:col-span-2 rounded-[22px] border border-[#163126]/8 bg-[#f9fcfa] px-5 py-10 text-center text-sm text-[#163126]/60">
+                <div className="sm:col-span-2 rounded-[18px] bg-[#f7fbf8] px-5 py-10 text-center text-sm font-semibold text-[#163126]/60">
                   표시할 챌린지가 없어요.
                 </div>
               ) : (
@@ -840,48 +1242,67 @@ export default function ChallengeScreen() {
                       }
                       transition={{ duration: 0.55 }}
                       onClick={() => handleSelectChallenge(challenge.id)}
-                      className={`rounded-[22px] border p-5 text-left transition ${
-                        selected
-                          ? "border-[#73d99c] bg-[#ecf9f1] shadow-[0_12px_28px_rgba(22,49,38,0.08)]"
-                          : "border-[#163126]/8 bg-[#f9fcfa] hover:bg-white"
+                      className={`rounded-[18px] p-5 text-left shadow-[0_14px_34px_rgba(46,125,91,0.06)] transition ${
+                        shouldPulse
+                          ? "bg-[#e5f9e9] ring-2 ring-[#39b956] shadow-[0_20px_45px_rgba(46,125,91,0.18)]"
+                          : selected
+                            ? "bg-[#edf9ef] ring-2 ring-[#73d99c]"
+                            : "bg-white hover:bg-[#fbfefb] hover:shadow-[0_18px_42px_rgba(46,125,91,0.10)]"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#f0f7f2] text-3xl">
+                          {challengeIcon(challenge)}
+                        </div>
+                        <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2E7D5B]">
+                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#2E7D5B]">
                               {challenge.category}
                             </p>
                             {challenge.aiRecommended && <RecommendBadge />}
                           </div>
 
-                          <h3 className="mt-2 text-lg font-bold text-[#163126]">
+                          <h3 className="mt-1 truncate text-lg font-black text-[#163126]">
                             {challenge.title}
                           </h3>
+                          <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[#163126]/58">
+                            {challenge.description}
+                          </p>
                         </div>
-
                         <StatusBadge status={challenge.status} />
                       </div>
 
-                      <p className="mt-3 text-sm leading-6 text-[#163126]/65">
-                        {challenge.description}
-                      </p>
-
-                      <div className="mt-4 flex items-center justify-between text-xs text-[#163126]/55">
-                        <span>{challenge.durationDays}일 챌린지</span>
-                        <span>
-                          {successCount}/{challenge.durationDays} 성공
+                      <div className="mt-5 flex items-center justify-between gap-3">
+                        <span className="text-xs font-bold text-[#163126]/48">
+                          {successCount}/{challenge.durationDays}일
+                        </span>
+                        <span className="text-xs font-bold text-[#163126]/48">
+                          {Math.round((successCount / challenge.durationDays) * 100)}%
                         </span>
                       </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e7eeea]">
+                        <div
+                          className="h-full rounded-full bg-[#39b956]"
+                          style={{
+                            width: `${Math.max(
+                              4,
+                              Math.round((successCount / challenge.durationDays) * 100)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+
                     </motion.button>
                   );
                 })
               )}
             </div>
+        )}
+        </div>
 
             <div
               ref={detailRef}
-              className="rounded-[24px] border border-[#163126]/8 bg-[#f9fcfa] p-5 md:p-6"
+          className="rounded-[18px] bg-[#fbfdfb] p-5 xl:sticky xl:top-4 xl:mt-[154px]"
             >
               <AnimatePresence mode="wait">
                 {!selectedChallenge ? (
@@ -890,21 +1311,34 @@ export default function ChallengeScreen() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="flex min-h-[560px] flex-col items-center justify-center text-center"
+                    className="flex min-h-[620px] flex-col text-center"
                   >
-                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#ecf9f1] text-2xl">
-                      🎯
+                    <div className="flex flex-1 flex-col items-center justify-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#e8f7ef] text-2xl">
+                        🎯
+                      </div>
+                      <p className="mt-6 text-sm font-black uppercase tracking-[0.18em] text-[#2E7D5B]">
+                        challenge detail
+                      </p>
+                      <h2 className="mt-3 text-2xl font-black text-[#163126]">
+                        챌린지를 선택해주세요
+                      </h2>
+                      <p className="mt-3 max-w-md text-sm font-semibold leading-7 text-[#163126]/58">
+                        왼쪽 카드에서 챌린지를 클릭하면 상세 정보와 인증 영역이
+                        열려요.
+                      </p>
+                      <img
+                        src="/images/buddy-review.png"
+                        alt=""
+                        className="mt-7 h-40 w-40 object-contain"
+                      />
                     </div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2E7D5B]">
-                      challenge detail
-                    </p>
-                    <h2 className="mt-3 text-2xl font-bold text-[#163126]">
-                      챌린지를 선택해주세요
-                    </h2>
-                    <p className="mt-3 max-w-md text-sm leading-7 text-[#163126]/62">
-                      왼쪽 카드에서 챌린지를 클릭하면 상세 정보와 인증 영역이
-                      열려요.
-                    </p>
+                    <div className="mt-auto w-full rounded-[18px] bg-[#f0fbf3] px-5 py-4 text-left">
+                      <p className="text-sm font-black text-[#2E7D5B]">TIP</p>
+                      <p className="mt-2 text-sm font-semibold leading-6 text-[#163126]/58">
+                        꾸준한 실천이 건강한 습관을 만들어요.
+                      </p>
+                    </div>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -913,72 +1347,97 @@ export default function ChallengeScreen() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2E7D5B]">
-                            {selectedChallenge.category}
-                          </p>
-                          {selectedChallenge.aiRecommended && <RecommendBadge />}
+                    <div className="rounded-[22px] bg-white px-5 py-5 shadow-[0_12px_28px_rgba(46,125,91,0.06)]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#eef8e9] text-3xl">
+                            {challengeIcon(selectedChallenge)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#2E7D5B]">
+                                {selectedChallenge.category}
+                              </p>
+                              {selectedChallenge.aiRecommended && <RecommendBadge />}
+                            </div>
+
+                            <h2 className="mt-2 text-2xl font-black text-[#163126]">
+                              {selectedChallenge.title}
+                            </h2>
+                          </div>
                         </div>
 
-                        <h2 className="mt-2 text-2xl font-bold text-[#163126]">
-                          {selectedChallenge.title}
-                        </h2>
+                        <StatusBadge status={selectedChallenge.status} />
                       </div>
 
-                      <StatusBadge status={selectedChallenge.status} />
+                      <p className="mt-4 text-sm font-semibold leading-7 text-[#163126]/62 md:text-base">
+                        {selectedChallenge.description}
+                      </p>
                     </div>
-
-                    <p className="mt-4 text-sm leading-7 text-[#163126]/68 md:text-base">
-                      {selectedChallenge.description}
-                    </p>
 
                     {selectedChallenge.aiRecommended &&
                       selectedChallenge.aiReason && (
-                        <div className="mt-4 rounded-[18px] bg-[#fff8df] px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6c00]">
+                        <div className="mt-4 rounded-[18px] bg-[#fff8df] px-5 py-4">
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#8a6c00]">
                             AI 추천 이유
                           </p>
-                          <p className="mt-2 text-sm leading-6 text-[#5c4a00]">
+                          <p className="mt-2 text-sm font-semibold leading-6 text-[#5c4a00]">
                             {selectedChallenge.aiReason}
                           </p>
                         </div>
                       )}
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      <InfoCard label="기대효과" value={selectedChallenge.effect} />
-                      <InfoCard
-                        label="대상 위험 요인"
-                        value={selectedChallenge.riskTarget}
-                      />
-                      <InfoCard
-                        label="인증 방식"
-                        value={verificationLabel(selectedChallenge.verification)}
-                      />
-                      <InfoCard
-                        label="완료 기준"
-                        value={`${selectedChallenge.durationDays}일 중 ${selectedChallenge.completionWindow}일 성공`}
-                      />
+                    <div className="mt-4 rounded-[22px] bg-white px-5 py-5 shadow-[0_12px_28px_rgba(46,125,91,0.05)]">
+                      <SectionTitle title="챌린지 정보" />
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <InfoCard label="기대효과" value={selectedChallenge.effect} />
+                        <InfoCard
+                          label="대상 위험 요인"
+                          value={selectedChallenge.riskTarget}
+                        />
+                        <InfoCard
+                          label="인증 방식"
+                          value={verificationLabel(selectedChallenge.verification)}
+                        />
+                        <InfoCard
+                          label="완료 기준"
+                          value={`${selectedChallenge.durationDays}일 중 ${selectedChallenge.completionWindow}일 성공`}
+                        />
+                      </div>
                     </div>
 
                     {selectedChallenge.verification === "photo" && (
-                      <div className="mt-4 rounded-[18px] bg-white px-4 py-4 text-sm leading-7 text-[#163126]/68">
-                        <p className="font-semibold text-[#163126]">
+                      <div className="mt-4 rounded-[18px] bg-[#fff8df] px-5 py-4 text-sm font-semibold leading-7 text-[#5c4a00]">
+                        <p className="font-black text-[#8a6c00]">
                           포인트 안내
                         </p>
                         <p className="mt-2">운동 캡처 인증 성공 시 +100포인트</p>
                       </div>
                     )}
 
-                    <div className="mt-6">
-                      <p className="text-sm font-semibold text-[#163126]">
-                        진행 현황
-                      </p>
+                    <div className="mt-4 rounded-[22px] bg-white px-5 py-5 shadow-[0_12px_28px_rgba(46,125,91,0.05)]">
+                      <SectionTitle title="진행 현황" />
                       <div className="mt-3 grid grid-cols-7 gap-2">
-                        {selectedChallenge.logs.map((log, idx) => (
-                          <div
+                        {selectedChallenge.logs.map((log, idx) => {
+                          const lastSuccessIndex = selectedChallenge.logs.reduce(
+                            (lastIndex, value, index) =>
+                              value === true ? index : lastIndex,
+                            -1
+                          );
+                          const isTodayCompleted =
+                            log === true &&
+                            selectedChallenge.lastSubmittedDate === todayKey &&
+                            idx === lastSuccessIndex;
+
+                          return (
+                          <motion.div
                             key={idx}
+                            animate={
+                              isTodayCompleted
+                                ? { scale: [1, 1.28, 1], y: [0, -4, 0] }
+                                : { scale: 1, y: 0 }
+                            }
+                            transition={{ duration: 0.65, ease: "easeOut" }}
                             className={`rounded-2xl border px-2 py-3 text-center text-xs font-medium ${
                               log === true
                                 ? "border-[#73d99c] bg-[#ecf9f1] text-[#163126]"
@@ -991,14 +1450,16 @@ export default function ChallengeScreen() {
                             <div className="mt-1 text-base">
                               {log === true ? "✔" : log === false ? "✖" : "-"}
                             </div>
-                          </div>
-                        ))}
+                          </motion.div>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    <div className="mt-6 rounded-[22px] border border-[#163126]/8 bg-white p-5">
+                    <div className="mt-4 rounded-[22px] bg-[#f0fbf3] p-5 shadow-[inset_0_0_0_1px_rgba(70,185,106,0.08)]">
+                      <SectionTitle title="인증 영역" />
                       {selectedChallenge.status === "locked" ? (
-                        <div>
+                        <div className="mt-4 rounded-[18px] bg-white px-5 py-5">
                           <p className="text-sm font-semibold text-[#163126]">
                             아직 시작하지 않은 챌린지예요
                           </p>
@@ -1010,14 +1471,14 @@ export default function ChallengeScreen() {
                             <button
                               onClick={handleStartChallenge}
                               disabled={loadingAction}
-                              className="mt-5 rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:opacity-50"
+                              className="mt-5 rounded-full bg-[#46B96A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:opacity-50"
                             >
                               {loadingAction ? "시작 중..." : "챌린지 시작하기"}
                             </button>
                           )}
                         </div>
                       ) : selectedChallenge.status === "done" ? (
-                        <div>
+                        <div className="mt-4 rounded-[18px] bg-white px-5 py-5">
                           <p className="text-sm font-semibold text-[#2E7D5B]">
                             🎉 챌린지 성공!
                           </p>
@@ -1029,7 +1490,7 @@ export default function ChallengeScreen() {
                             <button
                               onClick={handleRestartChallenge}
                               disabled={loadingAction}
-                              className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:opacity-50"
+                              className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#46B96A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:opacity-50"
                             >
                               <RotateCcw className="h-4 w-4" />
                               {loadingAction ? "재시작 중..." : "다시 시도하기"}
@@ -1037,7 +1498,7 @@ export default function ChallengeScreen() {
                           )}
                         </div>
                       ) : isSubmittedToday ? (
-                        <div className="rounded-2xl bg-[#ecf9f1] px-4 py-4">
+                        <div className="mt-4 rounded-[18px] bg-white px-5 py-5">
                           <p className="text-sm font-semibold text-[#163126]">
                             ✔ 오늘 인증 완료
                           </p>
@@ -1054,7 +1515,7 @@ export default function ChallengeScreen() {
                           </button>
                         </div>
                       ) : (
-                        <div>
+                        <div className="mt-4 rounded-[18px] bg-white px-5 py-5">
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-[#163126]">
@@ -1080,7 +1541,7 @@ export default function ChallengeScreen() {
                               <button
                                 onClick={() => void handleDailyCheck(true)}
                                 disabled={Boolean(isSubmittedToday) || loadingAction}
-                                className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25"
+                                className="rounded-full bg-[#46B96A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:cursor-not-allowed disabled:bg-[#46B96A]/35"
                               >
                                 예
                               </button>
@@ -1107,7 +1568,7 @@ export default function ChallengeScreen() {
                                 <button
                                   onClick={() => void handleNumberSubmit()}
                                   disabled={Boolean(isSubmittedToday) || loadingAction}
-                                  className="rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25"
+                                  className="rounded-full bg-[#46B96A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:cursor-not-allowed disabled:bg-[#46B96A]/35"
                                 >
                                   저장
                                 </button>
@@ -1123,7 +1584,7 @@ export default function ChallengeScreen() {
                               <button
                                 onClick={() => setExerciseVerifyOpen(true)}
                                 disabled={photoSubmitting}
-                                className="inline-flex items-center gap-2 rounded-full bg-[#163126] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4232] disabled:cursor-not-allowed disabled:bg-[#163126]/25"
+                                className="inline-flex items-center gap-2 rounded-full bg-[#46B96A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:cursor-not-allowed disabled:bg-[#46B96A]/35"
                               >
                                 <Camera className="h-4 w-4" />
                                 운동 앱으로 인증하기
@@ -1161,8 +1622,7 @@ export default function ChallengeScreen() {
                 )}
               </AnimatePresence>
             </div>
-          </div>
-        )}
+      </section>
       </div>
 
       <ExerciseVerifyModal
@@ -1173,6 +1633,8 @@ export default function ChallengeScreen() {
         errorMessage={photoError}
         submitting={photoSubmitting}
       />
+      <ChallengeGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <ChallengeSuccessCelebration celebration={celebration} />
     </section>
   );
 }
@@ -1193,10 +1655,10 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className={`h-16 w-full rounded-[20px] px-4 transition ${
+      className={`h-14 w-full rounded-full px-4 transition-all duration-300 hover:-translate-y-0.5 ${
         active
-          ? "bg-[#163126] text-white shadow-[0_10px_24px_rgba(22,49,38,0.14)]"
-          : "border border-[#163126]/8 bg-white text-[#163126]/65 hover:bg-[#f8fbf8]"
+          ? "bg-[#46B96A] text-white shadow-[0_10px_24px_rgba(70,185,106,0.16)]"
+          : "bg-white text-[#163126]/65 shadow-[0_10px_24px_rgba(46,125,91,0.05)] hover:bg-[#f8fbf8]"
       }`}
     >
       <div className="flex items-center justify-center gap-2">
@@ -1251,11 +1713,233 @@ function RecommendBadge() {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-[#163126]/8 bg-white px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2E7D5B]">
+    <div className="rounded-2xl bg-[#f7fbf8] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(46,125,91,0.08)]">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-[#2E7D5B]">
         {label}
       </p>
-      <p className="mt-2 text-sm leading-6 text-[#163126]">{value}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-[#163126]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-2.5 w-2.5 rounded-full bg-[#46B96A]" />
+      <p className="text-sm font-black text-[#163126]">{title}</p>
+    </div>
+  );
+}
+
+function challengeIcon(challenge: Pick<ChallengeItem, "title" | "category">) {
+  const text = `${challenge.title} ${challenge.category}`;
+
+  if (text.includes("저염") || text.includes("나트륨")) return "🥗";
+  if (text.includes("포화지방") || text.includes("지방")) return "🍲";
+  if (text.includes("당")) return "🥤";
+  if (text.includes("야식")) return "🌙";
+  if (text.includes("유산소") || text.includes("운동")) return "👟";
+  if (text.includes("걷") || text.includes("걸음") || text.includes("보")) {
+    return "🚶";
+  }
+  if (text.includes("물")) return "💧";
+  if (text.includes("식후")) return "🍃";
+
+  return "🎯";
+}
+
+function ChallengeGuideModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  const guideItems = [
+    {
+      title: "진행 방법",
+      icon: "🎯",
+      lines: [
+        "챌린지를 선택하고 시작하기를 눌러요.",
+        "매일 인증하면 진행률이 채워져요.",
+        "목표 일수를 채우면 완료돼요.",
+      ],
+    },
+    {
+      title: "인증 방식",
+      icon: "✅",
+      lines: [
+        "체크 인증은 예/아니오로 기록해요.",
+        "수치 입력은 걸음 수처럼 값을 입력해요.",
+        "사진 인증은 운동 앱 캡처를 업로드해요.",
+      ],
+    },
+    {
+      title: "AI 추천 챌린지",
+      icon: "✨",
+      lines: [
+        "건강 분석 결과를 바탕으로 추천해요.",
+        "아직 시작하지 않은 추천만 위에 보여요.",
+        "시작하면 진행 중 챌린지에서 이어가요.",
+      ],
+    },
+    {
+      title: "연속 달성",
+      icon: "🔥",
+      lines: [
+        "하루에 어떤 챌린지든 1개 이상 인증하면 달성이에요.",
+        "2일 이상 이어지면 연속 달성으로 기록돼요.",
+        "성장 기록 달력에서 불꽃으로 확인해요.",
+      ],
+    },
+    {
+      title: "포인트와 스티커",
+      icon: "🏅",
+      lines: [
+        "챌린지 완료 시 포인트를 받을 수 있어요.",
+        "인증 기록은 성장 기록에 스티커로 남아요.",
+        "챌린지별 스티커로 실천 내용을 구분해요.",
+      ],
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-[0_24px_70px_rgba(0,0,0,0.18)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#2E7D5B]">
+              challenge guide
+            </p>
+            <h3 className="mt-2 text-2xl font-black text-[#163126]">
+              챌린지 가이드
+            </h3>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#163126]/58">
+              챌린지를 시작하고 인증하는 방법을 한눈에 확인해요.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f4f8f5] text-[#163126]/55 transition hover:bg-[#edf7ef]"
+            aria-label="챌린지 가이드 닫기"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2">
+          {guideItems.map((item) => (
+            <div key={item.title} className="rounded-[18px] bg-[#f7fbf8] px-5 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl">
+                  {item.icon}
+                </div>
+                <p className="text-base font-black text-[#163126]">
+                  {item.title}
+                </p>
+              </div>
+              <ul className="mt-4 space-y-2">
+                {item.lines.map((line) => (
+                  <li
+                    key={line}
+                    className="flex gap-2 text-sm font-semibold leading-6 text-[#163126]/62"
+                  >
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2E9C45]" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full bg-[#46B96A] px-5 py-3 text-sm font-black text-white transition hover:bg-[#35A85A]"
+          >
+            확인했어요
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChallengeSuccessCelebration({
+  celebration,
+}: {
+  celebration: {
+    challengeId: number | string;
+    title: string;
+    streak: number;
+    completed: boolean;
+    point: number;
+  } | null;
+}) {
+  if (!celebration) return null;
+
+  const particles = ["✦", "★", "✦", "✓", "★", "✦", "✓", "★"];
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-[#163126]/8" />
+      {particles.map((particle, index) => {
+        const angle = (index / particles.length) * Math.PI * 2;
+        const distance = 120 + (index % 3) * 28;
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+
+        return (
+          <motion.span
+            key={`${particle}-${index}`}
+            initial={{ opacity: 0, x: 0, y: 0, scale: 0.4, rotate: 0 }}
+            animate={{ opacity: [0, 1, 0], x, y, scale: [0.4, 1.2, 0.8], rotate: 180 }}
+            transition={{ duration: 1.3, ease: "easeOut" }}
+            className="absolute text-2xl font-black text-[#39b956]"
+          >
+            {particle}
+          </motion.span>
+        );
+      })}
+
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.92 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -12, scale: 0.96 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="relative w-full max-w-[360px] rounded-[28px] bg-white px-6 py-7 text-center shadow-[0_24px_70px_rgba(22,49,38,0.20)]"
+      >
+        <motion.div
+          initial={{ scale: 0.4, rotate: -18 }}
+          animate={{ scale: [0.4, 1.22, 1], rotate: [-18, 8, 0] }}
+          transition={{ duration: 0.62, ease: "easeOut" }}
+          className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#e5f9e9] text-4xl text-[#2E9C45]"
+        >
+          ✓
+        </motion.div>
+        <p className="mt-5 text-2xl font-black text-[#163126]">
+          {celebration.completed ? "챌린지 달성!" : "오늘 인증 완료!"}
+        </p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#163126]/58">
+          {celebration.title}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <span className="rounded-full bg-[#fff4cf] px-3 py-2 text-sm font-black text-[#b67f00]">
+            +{celebration.point} 포인트
+          </span>
+          <span className="rounded-full bg-[#fff1db] px-3 py-2 text-sm font-black text-[#f08a16]">
+            🔥 {celebration.streak}일 연속
+          </span>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -1454,7 +2138,7 @@ function ExerciseVerifyModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="rounded-full bg-[#163126] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-full bg-[#46B96A] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#35A85A] disabled:opacity-50"
           >
             {submitting ? "인증 중..." : "인증 요청"}
           </button>

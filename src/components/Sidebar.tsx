@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAccessStore } from "@/src/store/access-store";
 import { storage, type AccessLevel } from "@/src/utils/storage";
+import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type SidebarProps = {
   onRequireLogin?: () => void;
@@ -122,6 +123,61 @@ function getNavItems(accessLevel: AccessLevel): NavItem[] {
   }
 }
 
+function getSidebarGuide(pathname: string) {
+  if (pathname === "/dashboard" || pathname === "/social/feed") {
+    return {
+      title: "대시보드",
+      description: "오늘의 건강 상태와 친구 활동을 한눈에 확인해요.",
+    };
+  }
+
+  if (
+    pathname === "/input" ||
+    pathname.startsWith("/input/") ||
+    pathname === "/result" ||
+    pathname === "/analyzing" ||
+    pathname.startsWith("/result/")
+  ) {
+    return {
+      title: "AI 건강 분석",
+      description: "건강검진 수치와 생활 습관으로 심혈관 위험을 분석해요.",
+    };
+  }
+
+  if (pathname.startsWith("/challenge")) {
+    return {
+      title: "챌린지",
+      description: "나에게 맞는 건강 습관을 매일 인증하며 이어가요.",
+    };
+  }
+
+  if (pathname.startsWith("/diet-analysis")) {
+    return {
+      title: "식단 분석",
+      description: "음식 사진으로 영양 균형과 식사 방향을 확인해요.",
+    };
+  }
+
+  if (pathname.startsWith("/growth")) {
+    return {
+      title: "성장 기록",
+      description: "챌린지 기록과 건강 변화를 달력으로 돌아봐요.",
+    };
+  }
+
+  if (pathname.startsWith("/mypage")) {
+    return {
+      title: "마이페이지",
+      description: "내 정보와 건강 데이터를 편하게 관리할 수 있어요.",
+    };
+  }
+
+  return {
+    title: "MyHealthBuddy",
+    description: "건강한 하루를 기록하고 작은 변화를 쌓아가요.",
+  };
+}
+
 export default function Sidebar({ onRequireLogin }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -142,6 +198,7 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
     if (!hydrated) return [];
     return getNavItems(accessLevel);
   }, [accessLevel, hydrated]);
+  const guide = useMemo(() => getSidebarGuide(pathname), [pathname]);
 
   const handleRequireLogin = (targetPath: string) => {
     storage.setPostLoginRedirectPath(targetPath);
@@ -164,7 +221,9 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
   };
 
   const isActive = (href: string) => {
-    if (href === "/dashboard") return pathname === "/dashboard";
+    if (href === "/dashboard") {
+      return pathname === "/dashboard" || pathname === "/social/feed";
+    }
 
     if (href === "/input") {
       return pathname === "/input" || pathname.startsWith("/input/");
@@ -186,14 +245,29 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col border-r border-[#163126]/8 bg-[#f7faf8] md:flex">
-      <div className="border-b border-[#163126]/8 px-6 py-5">
+    <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col border-r border-[#163126]/6 bg-white px-6 py-6 transition-colors duration-300 lg:flex">
+      <div>
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="mb-5 text-left text-[11px] font-bold uppercase tracking-[0.24em] text-[#2E7D5B]"
+          className="group flex items-center gap-3 text-left"
         >
-          MYHEALTHBUDDY
+          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[#f7fbf8]">
+            <img
+              src="/images/buddy-face.png"
+              alt=""
+              className="h-10 w-10 object-cover"
+            />
+          </span>
+
+          <span>
+            <span className="block text-[18px] font-black leading-none text-[#1f5c45]">
+              MyHealthBuddy
+            </span>
+            <span className="mt-1 block text-[10px] font-bold text-[#163126]/45">
+              건강한 하루를 함께 기록해요
+            </span>
+          </span>
         </button>
 
         <button
@@ -206,35 +280,32 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
 
             router.push("/mypage");
           }}
-          className="flex w-full items-center gap-4 rounded-[20px] text-left transition hover:bg-white/70"
+          className="mt-7 w-full rounded-[18px] border border-[#163126]/8 bg-white px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-[#46B96A]/35 hover:bg-[#fbfdfb]"
         >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#eef9f2] shadow-[0_6px_18px_rgba(46,125,91,0.08)]">
-            {profileImage ? (
-              <img
-                src={profileImage}
-                alt="프로필 이미지"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-2xl">🐹</span>
-            )}
-          </div>
+          <div className="flex items-center gap-3">
+            <ProfileNameAvatar
+              name={displayName}
+              image={profileImage}
+              className="h-[66px] w-[66px] ring-4 ring-[#eff8f1]"
+              textClassName="text-[11px]"
+            />
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[20px] font-bold tracking-[-0.03em] text-[#163126]">
-              {displayName}
-              <span className="ml-1 text-base">💚</span>
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="break-keep text-[18px] font-black leading-6 text-[#163126]">
+                {displayName}
+                <span className="ml-1 text-sm">💚</span>
+              </p>
 
-            <p className="mt-1 truncate text-sm font-semibold text-[#2E7D5B]">
-              {sidebarMessage}
-            </p>
+              <p className="mt-1 break-keep text-[11px] font-bold leading-4 text-[#2E7D5B]">
+                {sidebarMessage}
+              </p>
+            </div>
           </div>
         </button>
       </div>
 
-      <nav className="flex-1 px-4 py-4">
-        <ul className="space-y-2">
+      <nav className="mt-6 flex-1">
+        <ul className="space-y-1.5">
           {navItems.map((item) => {
             const active = isActive(item.href);
 
@@ -243,17 +314,17 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
                 <button
                   type="button"
                   onClick={() => handleMove(item)}
-                  className={`flex w-full items-center gap-3 rounded-[22px] px-4 py-3 text-left transition ${
+                  className={`group flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left transition ${
                     active
-                      ? "bg-[#eaf7ee] text-[#163126]"
-                      : "text-[#163126]/72 hover:bg-white"
+                      ? "bg-[linear-gradient(90deg,#e4f4e8_0%,rgba(228,244,232,0.55)_100%)] text-[#1f7a46] shadow-[inset_3px_0_0_#46B96A]"
+                      : "text-[#163126]/72 hover:bg-[#f7fbf8] hover:text-[#1f7a46]"
                   }`}
                 >
                   <span
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] ${
                       active
-                        ? "bg-white text-[#163126]"
-                        : "bg-transparent text-[#163126]/58"
+                        ? "text-[#1f7a46]"
+                        : "text-[#163126]/58 group-hover:text-[#1f7a46]"
                     }`}
                   >
                     {item.icon}
@@ -268,6 +339,19 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
           })}
         </ul>
       </nav>
+
+      <div className="rounded-[18px] border border-[#163126]/8 bg-[#fbfdfb] px-4 py-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#2E7D5B]">
+          page guide
+        </p>
+        <p className="mt-2 break-keep text-[15px] font-black leading-5 text-[#1f5c45]">
+          {guide.title}
+        </p>
+        <p className="mt-2 break-keep text-[12px] font-semibold leading-5 text-[#163126]/58">
+          {guide.description}
+        </p>
+
+      </div>
     </aside>
   );
 }

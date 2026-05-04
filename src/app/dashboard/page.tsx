@@ -10,6 +10,7 @@ import { getDashboard } from "@/src/api/user";
 import { getHealthRecords } from "@/src/api/health";
 import { getAnalysisHistory } from "@/src/api/analysis";
 import { storage } from "@/src/utils/storage";
+import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
 
@@ -116,7 +117,8 @@ const getChallengeSummaryFromStore = () => {
 const buildDashboardViewData = (
   dashboard: any,
   latestRecord: HealthRecordLike | null,
-  latestAnalysis: AnalysisHistoryLike | null
+  latestAnalysis: AnalysisHistoryLike | null,
+  storedUser: any = null
 ): DashboardViewData => {
   const currentYear = new Date().getFullYear();
 
@@ -154,7 +156,12 @@ const buildDashboardViewData = (
   );
 
   const nickname =
-    dashboard?.nickname ?? dashboard?.name ?? dashboard?.user?.nickname ?? "버디";
+    dashboard?.nickname ??
+    dashboard?.user?.nickname ??
+    storedUser?.nickname ??
+    dashboard?.name ??
+    storedUser?.name ??
+    "버디";
 
   const characterStage = Number(dashboard?.character_stage ?? 1);
   const nextUpdateDays = Number(dashboard?.next_update_days ?? 2);
@@ -175,24 +182,70 @@ const buildDashboardViewData = (
   };
 };
 
+const mockDashboardData: DashboardViewData = {
+  nickname: "이형석",
+  point: 1280,
+  healthScore: 72,
+  heartAge: 37,
+  actualAge: 30,
+  streak: 3,
+  characterStage: 2,
+  challengeProgress: 62,
+  nextUpdateDays: 2,
+  riskTags: ["혈압 관리 필요", "수면 습관 개선", "운동 실천 중"],
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
 
+  const [isMock, setIsMock] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardViewData | null>(
     null
   );
 
   useEffect(() => {
+    perfMark("dashboard:mounted");
+  }, []);
+
+  useEffect(() => {
+    setIsMock(new URLSearchParams(window.location.search).get("mock") === "1");
+  }, []);
+
+  useEffect(() => {
+    if (isMock === null) return;
+
+    if (isMock) {
+      setDashboardData(mockDashboardData);
+      setChecking(false);
+      return;
+    }
+
     const init = async () => {
+      let dataStarted = false;
+      let ready = false;
+
       try {
+        const isMockPreview =
+          process.env.NODE_ENV === "development" &&
+          new URLSearchParams(window.location.search).get("mock") === "1";
+
+        if (isMockPreview) {
+          setDashboardData(mockDashboardData);
+          ready = true;
+          return;
+        }
+
         const token = storage.getAccessToken();
 
         if (!token) {
           router.replace("/login");
           return;
         }
+
+        dataStarted = true;
+        perfMark("dashboard:data:start");
 
         const [dashboardRes, healthRes, analysisRes] = await Promise.all([
           getDashboard(),
@@ -219,14 +272,29 @@ export default function DashboardPage() {
         const viewData = buildDashboardViewData(
           dashboardRes,
           latestRecord,
-          latestAnalysis
+          latestAnalysis,
+          storage.getUser?.()
         );
 
         setDashboardData(viewData);
+        ready = true;
       } catch (error) {
         console.error("대시보드 초기화 실패:", error);
         router.replace("/input");
       } finally {
+        if (dataStarted) {
+          perfMark("dashboard:data:end");
+          perfMeasure(
+            "dashboard:data",
+            "dashboard:data:start",
+            "dashboard:data:end"
+          );
+        }
+
+        if (ready) {
+          perfMark("dashboard:ready");
+        }
+
         setChecking(false);
       }
     };
@@ -252,9 +320,9 @@ export default function DashboardPage() {
     return () => {
       unsubscribe();
     };
-  }, [router, hydrated]);
+  }, [router, hydrated, isMock]);
 
-  if (checking || !hydrated) {
+  if (checking || isMock === null || (!hydrated && !isMock)) {
     return (
       <AppShell>
         <div className="flex min-h-[60vh] items-center justify-center rounded-[32px] border border-white/40 bg-white/60 text-[#163126]/60 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl">
@@ -268,7 +336,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <DashboardScreen dashboardData={dashboardData} />
+      <DashboardScreen dashboardData={dashboardData} mock={isMock === true} />
     </AppShell>
   );
 }

@@ -273,12 +273,16 @@ export default function DietResultScreen({ mode, image, result }: Props) {
       ? `${result.estimated_calories} kcal`
       : "분석 정보 없음";
   const scoreText = result.overall_score != null ? result.overall_score : "-";
+  const recommendedRatio =
+    result.daily_recommended_ratio ??
+    result.daily_intake_ratio ??
+    result.recommended_ratio;
   const dailyMealRatio = {
-    calories: null,
-    carbohydrate: null,
-    protein: null,
-    fat: null,
-    sodium: null,
+    calories: recommendedRatio?.calories_pct ?? null,
+    carbohydrate: recommendedRatio?.carbohydrate_pct ?? null,
+    protein: recommendedRatio?.protein_pct ?? null,
+    fat: recommendedRatio?.fat_pct ?? null,
+    sodium: recommendedRatio?.sodium_pct ?? null,
   };
 
   return (

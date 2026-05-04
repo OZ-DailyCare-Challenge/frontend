@@ -210,55 +210,65 @@ export default function UploadCheckupClient() {
   };
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[linear-gradient(180deg,#F7FBF8_0%,#EEF7F0_100%)] text-[#163126]">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7fbf8] text-[#163126]">
       <header className="flex items-center justify-between px-4 py-5 sm:px-6 md:px-10">
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="flex items-center gap-2 text-sm font-semibold text-[#163126]"
+          className="flex items-center gap-3 text-left"
         >
-          <span className="h-2.5 w-2.5 rounded-full bg-[#7EE8A7]" />
-          MyHealthBuddy
+          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[#f7fbf8]">
+            <img src="/images/buddy-face.png" alt="" className="h-10 w-10 object-cover" />
+          </span>
+          <span>
+            <span className="block text-[18px] font-black leading-none text-[#1f5c45]">
+              MyHealthBuddy
+            </span>
+            <span className="mt-1 block text-[10px] font-bold text-[#163126]/45">
+              건강한 하루를 함께 기록해요
+            </span>
+          </span>
         </button>
 
-        <div className="rounded-full border border-[#163126]/10 bg-white/70 px-4 py-2 text-xs font-medium text-[#163126]/70 backdrop-blur-md md:text-sm">
+        <div className="rounded-full border border-[#163126]/10 bg-white px-4 py-2 text-xs font-bold text-[#163126]/70 md:text-sm">
           OCR 업로드
         </div>
       </header>
 
       <section className="w-full px-4 pb-16 pt-2 sm:px-6 md:px-8">
         <div className="mt-10 flex justify-center">
-          <div className="grid w-full max-w-6xl items-start gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="hidden lg:flex lg:justify-end">
-              <div className="mt-8 flex items-end gap-4">
-                <div className="relative mt-4 w-[240px] rounded-[24px] border border-white/40 bg-white/72 px-5 py-5 shadow-[0_14px_40px_rgba(22,49,38,0.08)] backdrop-blur-xl">
+          <div className="grid w-full max-w-[1440px] items-start gap-8 lg:grid-cols-[300px_minmax(0,1fr)] xl:gap-10">
+            <aside className="hidden lg:block">
+              <div className="sticky top-28 flex min-h-[640px] flex-col items-center justify-end rounded-[32px]">
+                <div className="relative z-10 w-[250px] rounded-[26px] border border-[#dfe9e2] bg-white px-5 py-5 shadow-[0_14px_34px_rgba(22,49,38,0.06)]">
                   <p className="text-sm font-medium text-[#2E7D5B]">
                     buddy guide
                   </p>
 
                   <p className="mt-2 text-[17px] font-bold leading-[1.45] text-[#163126] whitespace-normal break-keep">
-                    Buddy가 이미지를 분석하고 입력값을 채워드려요
+                    {pageText.guideTitle}
                   </p>
 
                   <p className="mt-3 text-sm leading-7 text-[#163126]/68 whitespace-normal break-keep">
-                    혈압, 혈당, 콜레스테롤, 키, 체중 같은 주요 정보를 자동으로 읽어와서 입력을 더 빠르게 할 수 있어요.
+                    {pageText.guideDesc}
                   </p>
 
-                  <div className="absolute right-[-8px] top-8 h-4 w-4 rotate-45 border-r border-t border-white/40 bg-white/72" />
+                  <div className="absolute bottom-[-9px] left-1/2 h-5 w-5 -translate-x-1/2 rotate-45 border-b border-r border-[#dfe9e2] bg-white" />
                 </div>
 
-                <div className="flex h-[236px] w-[236px] shrink-0 items-end justify-center">
+                <div className="relative mt-10 flex h-[390px] w-full items-end justify-center pb-8">
+                  <div className="absolute bottom-2 left-1/2 h-24 w-[330px] -translate-x-1/2 rounded-[50%] bg-[#e7f5e2]" />
                   <img
                     src="/images/buddy-camera.png"
                     alt="검진표 업로드를 안내하는 버디"
-                    className="h-[226px] w-[226px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.08)]"
+                    className="relative z-10 h-[300px] w-[300px] object-contain drop-shadow-[0_16px_28px_rgba(0,0,0,0.08)]"
                   />
                 </div>
               </div>
             </aside>
 
             <div className="lg:hidden">
-              <div className="mx-auto mb-6 flex max-w-3xl items-start gap-3 rounded-[24px] border border-white/40 bg-white/68 p-4 shadow-[0_14px_40px_rgba(22,49,38,0.06)] backdrop-blur-xl">
+              <div className="mx-auto mb-6 flex max-w-3xl items-start gap-3 rounded-[24px] border border-[#163126]/8 bg-white p-4">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-[#2E7D5B]">
                     buddy guide
@@ -285,7 +295,7 @@ export default function UploadCheckupClient() {
             </div>
 
             <div className="w-full">
-              <section className="mx-auto w-full max-w-4xl rounded-[28px] border border-white/40 bg-white/55 p-5 shadow-[0_18px_50px_rgba(46,125,91,0.08)] backdrop-blur-xl sm:p-6 md:rounded-[40px] md:p-8 lg:p-10">
+              <section className="mx-auto w-full rounded-[28px] border border-[#dfe9e2] bg-white p-5 shadow-[0_18px_50px_rgba(22,49,38,0.06)] sm:p-6 md:rounded-[40px] md:p-8 lg:p-10 xl:p-12">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2E7D5B]">
                     OCR CHECKUP UPLOAD
@@ -301,7 +311,7 @@ export default function UploadCheckupClient() {
                 </div>
 
                 <div className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div className="rounded-[28px] border border-[#163126]/8 bg-white/72 p-5 md:p-6">
+                  <div className="rounded-[28px] border border-[#dfe9e2] bg-white p-5 md:p-6">
                     <div
                       onDrop={handleDrop}
                       onDragOver={handleDragOver}
@@ -328,7 +338,7 @@ export default function UploadCheckupClient() {
                       />
 
                       {!selectedFile ? (
-                        <div className="flex min-h-[290px] flex-col items-center justify-center">
+                        <div className="flex min-h-[420px] flex-col items-center justify-center">
                           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E8F5EA] text-[#2E7D5B]">
                             <Camera size={34} />
                           </div>
@@ -490,7 +500,7 @@ export default function UploadCheckupClient() {
 
               </section>
 
-              <div className="mx-auto mt-8 flex w-full max-w-4xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+              <div className="mx-auto mt-8 flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
                 <button
                   type="button"
                   onClick={() =>
