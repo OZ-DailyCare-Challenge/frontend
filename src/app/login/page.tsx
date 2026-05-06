@@ -20,7 +20,7 @@ import {
   getDashboard,
   // cancelWithdraw, // 백엔드 API 생기면 주석 해제
 } from "@/src/api/user";
-import { storage } from "@/src/utils/storage";
+import { storage, type UserInfo } from "@/src/utils/storage";
 import { guestAnalysisStorage } from "@/src/utils/guestAnalysisStorage";
 import { analysisStorage } from "@/src/utils/analysisStorage";
 import {
@@ -54,7 +54,7 @@ type WithdrawPendingState = {
 type LoginResponseWithWithdraw = {
   access_token: string;
   refresh_token?: string | null;
-  user?: any;
+  user?: UserInfo;
   withdrawal_pending?: boolean;
   withdrawal_deadline?: string;
 };
@@ -73,12 +73,17 @@ type DashboardProfile = {
 const GUEST_MIGRATION_KEY = "guest-health-migration-payload";
 const GUEST_MIGRATION_DONE_KEY = "guest-health-migration-done";
 
-function extractRecordId(res: any): number | null {
+function extractRecordId(res: unknown): number | null {
+  const source = res as {
+    record_id?: number | string;
+    id?: number | string;
+    data?: { record_id?: number | string; id?: number | string };
+  } | null;
   const value =
-    res?.record_id ??
-    res?.id ??
-    res?.data?.record_id ??
-    res?.data?.id ??
+    source?.record_id ??
+    source?.id ??
+    source?.data?.record_id ??
+    source?.data?.id ??
     null;
 
   if (typeof value === "number") return value;
@@ -132,9 +137,7 @@ function clearGuestMigrationState() {
   sessionStorage.removeItem(GUEST_MIGRATION_DONE_KEY);
   sessionStorage.removeItem("guest-profile");
 
-  analysisStorage.clearAll();
   guestAnalysisStorage.clearAll();
-  storage.clearGuestFlow();
   storage.clearPostLoginRedirectPath();
 
   if (typeof window !== "undefined") {
@@ -157,12 +160,17 @@ function formatDeadline(deadline?: string) {
   });
 }
 
-function extractStatusFromError(error: any): number | null {
-  const matchedStatus = error?.message?.match(/:\s(\d{3})\s/);
+function extractStatusFromError(error: unknown): number | null {
+  const source = error as {
+    message?: string;
+    response?: { status?: number };
+    status?: number;
+  } | null;
+  const matchedStatus = source?.message?.match(/:\s(\d{3})\s/);
 
   return (
-    error?.response?.status ??
-    error?.status ??
+    source?.response?.status ??
+    source?.status ??
     (matchedStatus ? Number(matchedStatus[1]) : null)
   );
 }
@@ -230,7 +238,7 @@ export default function LoginPage() {
             gender: guestPayload.gender,
             birth_year: guestPayload.birthYear,
           });
-        } catch (error: any) {
+        } catch (error) {
           const status = extractStatusFromError(error);
 
           if (status === 409) {
@@ -342,6 +350,7 @@ export default function LoginPage() {
     const previousUser = storage.getUser();
     const nextUserEmail = result.user?.email ?? null;
     const prevUserEmail = previousUser?.email ?? null;
+    const hasGuestMigrationPayload = Boolean(parseGuestMigrationPayload());
 
     const isDifferentUser =
       Boolean(prevUserEmail) &&
@@ -349,20 +358,22 @@ export default function LoginPage() {
       prevUserEmail !== nextUserEmail;
 
     analysisStorage.clearAll();
-    storage.clearAnalysisCache();
     sessionStorage.removeItem("health-analysis-task");
     sessionStorage.removeItem("health-analysis-result");
 
     if (isDifferentUser) {
       storage.clearHealthFlow();
-      storage.clearGuestFlow();
       storage.clearAccessSnapshot();
       clearHealthFlowComplete();
       sessionStorage.removeItem("health-ai-missions");
-      sessionStorage.removeItem(GUEST_MIGRATION_KEY);
-      sessionStorage.removeItem(GUEST_MIGRATION_DONE_KEY);
-      sessionStorage.removeItem("guest-profile");
-      guestAnalysisStorage.clearAll();
+
+      if (!hasGuestMigrationPayload) {
+        storage.clearGuestFlow();
+        sessionStorage.removeItem(GUEST_MIGRATION_KEY);
+        sessionStorage.removeItem(GUEST_MIGRATION_DONE_KEY);
+        sessionStorage.removeItem("guest-profile");
+        guestAnalysisStorage.clearAll();
+      }
     }
 
     await useAccessStore.getState().applyLogin({
@@ -373,6 +384,10 @@ export default function LoginPage() {
 
     const migrated = await migrateGuestDataToMember();
     await useAccessStore.getState().syncAccessFromServer();
+    if (migrated) {
+      markHealthFlowComplete();
+      useAccessStore.getState().markAnalysisComplete();
+    }
 
     const redirectPath = storage.getPostLoginRedirectPath();
     storage.clearPostLoginRedirectPath();
