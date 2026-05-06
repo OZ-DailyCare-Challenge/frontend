@@ -8,41 +8,98 @@ import { storage } from "@/src/utils/storage";
 import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type FeedItem = {
+  challenge_id: number;
+  user_challenge_id: number;
+  challenge_log_id?: number | null;
   user_id: number;
   nickname: string;
   profile_image?: string | null;
   challenge_title: string;
-  log_date: string;
+  log_date?: string | null;
   current_streak: number;
   created_at: string;
+  certified_today: boolean;
 };
 
 const mockFeedItems: FeedItem[] = [
   {
+    challenge_id: 1,
+    user_challenge_id: 101,
+    challenge_log_id: 1,
     user_id: 1,
     nickname: "이형석",
     challenge_title: "물 2L 마시기",
     log_date: "2026-05-01",
     current_streak: 3,
     created_at: "2026-05-01T09:00:00",
+    certified_today: true,
   },
   {
+    challenge_id: 2,
+    user_challenge_id: 102,
+    challenge_log_id: null,
     user_id: 2,
     nickname: "김민지",
     challenge_title: "30분 걷기",
-    log_date: "2026-05-01",
+    log_date: null,
     current_streak: 5,
     created_at: "2026-05-01T08:30:00",
+    certified_today: false,
   },
   {
+    challenge_id: 3,
+    user_challenge_id: 103,
+    challenge_log_id: 3,
     user_id: 3,
     nickname: "최지영",
     challenge_title: "저염식 식단 지키기",
     log_date: "2026-05-01",
     current_streak: 2,
     created_at: "2026-05-01T07:40:00",
+    certified_today: true,
   },
 ];
+
+function parseFeedLogDate(logDate?: string | null) {
+  if (!logDate) return null;
+
+  const [year, month, day] = logDate.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  return new Date(year, month - 1, day);
+}
+
+function getFeedTodayStatusLabel(item: FeedItem) {
+  return item.certified_today ? "오늘 인증 완료" : "오늘 아직 인증하지 않았어요";
+}
+
+function getFeedItemTime(item: FeedItem) {
+  const createdAtTime = new Date(item.created_at).getTime();
+  if (Number.isFinite(createdAtTime)) return createdAtTime;
+
+  const logDate = parseFeedLogDate(item.log_date);
+  return logDate?.getTime() ?? 0;
+}
+
+function getFeedChallengeKey(item: FeedItem) {
+  return `${item.user_id}:${item.challenge_title.trim().toLowerCase()}`;
+}
+
+function getLatestFeedItemsByChallenge(items: FeedItem[]) {
+  const map = new Map<string, FeedItem>();
+
+  items.forEach((item) => {
+    const key = getFeedChallengeKey(item);
+    const current = map.get(key);
+    if (!current || getFeedItemTime(item) > getFeedItemTime(current)) {
+      map.set(key, item);
+    }
+  });
+
+  return Array.from(map.values()).sort(
+    (a, b) => Number(b.certified_today) - Number(a.certified_today) || getFeedItemTime(b) - getFeedItemTime(a)
+  );
+}
 
 async function getFeed(): Promise<FeedItem[]> {
   const accessToken = storage.getAccessToken();
@@ -56,14 +113,23 @@ async function getFeed(): Promise<FeedItem[]> {
   return data.items ?? [];
 }
 
-async function postCheer(): Promise<void> {
+async function postCheer(targetUserId: number, challengeLogId?: number | null): Promise<void> {
   const accessToken = storage.getAccessToken();
   if (!accessToken) return;
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  await fetch(`${apiBaseUrl}/api/v1/social/feed/cheer`, {
+  const response = await fetch(`${apiBaseUrl}/api/v1/social/feed/cheer`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      target_user_id: targetUserId,
+      challenge_log_id: challengeLogId ?? null,
+    }),
   });
+
+  if (!response.ok) throw new Error("응원 보내기 실패");
 }
 
 export default function SocialFeedPage() {
@@ -89,9 +155,23 @@ export default function SocialFeedPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleCheer = async (key: string) => {
+  const handleCheer = async (
+    key: string,
+    targetUserId: number,
+    challengeLogId?: number | null
+  ) => {
     setCheered((prev) => new Set(prev).add(key));
-    await postCheer();
+    try {
+      await postCheer(targetUserId, challengeLogId);
+    } catch (error) {
+      console.error("응원 보내기 실패:", error);
+      setCheered((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      alert("응원 보내기에 실패했어요.");
+    }
   };
 
   return (
@@ -112,7 +192,7 @@ export default function SocialFeedPage() {
               친구 활동 전체보기
             </p>
             <p className="mt-2 text-sm text-[#163126]/58">
-              친구들의 챌린지 인증 소식을 한 번에 확인해보세요.
+              친구들의 오늘 챌린지 상태를 한 번에 확인해보세요.
             </p>
           </div>
         </div>
@@ -128,12 +208,13 @@ export default function SocialFeedPage() {
             </p>
           </div>
         )}
-        {items.map((item) => {
-          const key = `${item.user_id}-${item.created_at}`;
-          const ischeered = cheered.has(key);
+        {getLatestFeedItemsByChallenge(items).map((item) => {
+          const cardKey = `${item.user_id}-${item.user_challenge_id}`;
+          const cheerKey = `friend-${item.user_id}`;
+          const ischeered = cheered.has(cheerKey);
           return (
             <div
-              key={key}
+              key={cardKey}
               className="flex items-center justify-between rounded-2xl border border-[#e7efe9] bg-white px-4 py-4"
             >
               <div className="flex items-center gap-3">
@@ -146,16 +227,15 @@ export default function SocialFeedPage() {
                 <div>
                   <p className="text-sm font-semibold text-[#163126]">
                     {item.nickname}
-                    <span className="ml-1 font-normal text-[#163126]/50">님이</span>
                   </p>
                   <p className="text-sm text-[#2E7D5B] font-medium">{item.challenge_title}</p>
                   <p className="mt-0.5 text-xs text-[#163126]/40">
-                    {item.current_streak}일 연속 · {item.log_date}
+                    {item.current_streak}일 연속 · {getFeedTodayStatusLabel(item)}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => void handleCheer(key)}
+                onClick={() => void handleCheer(cheerKey, item.user_id, item.challenge_log_id)}
                 disabled={ischeered}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   ischeered
