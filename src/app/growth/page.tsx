@@ -47,6 +47,21 @@ type ChallengeLike = {
   lastSubmittedDate?: string | null;
 };
 
+type UserLike = {
+  nickname?: string;
+  name?: string;
+  profile_image?: string;
+  picture?: string;
+  current_point?: number;
+  birth_year?: number | string;
+};
+
+type DashboardLike = UserLike & {
+  point?: number;
+  points?: number;
+  user?: UserLike;
+};
+
 const extractArray = (res: unknown): HealthRecord[] => {
   if (Array.isArray(res)) return res as HealthRecord[];
 
@@ -125,7 +140,10 @@ const buildWeeklyChallenge = (challenges: ChallengeLike[]) => {
 const buildBadgesFromChallenges = (challenges: ChallengeLike[]) => {
   return challenges.map((challenge) => {
     const successCount = (challenge.logs ?? []).filter((log) => log === true).length;
-    const earned = successCount > 0 || challenge.status === "done";
+    const earned =
+      successCount > 0 ||
+      challenge.status === "done" ||
+      (challenge.currentStreak ?? 0) > 0;
 
     return {
       name: challenge.title || "챌린지",
@@ -241,7 +259,15 @@ const getIntegratedStreakDays = (challenges: ChallengeLike[]) => {
     .filter((item) => Number.isFinite(item.time))
     .sort((a, b) => a.time - b.time);
 
-  if (sortedSuccessDates.length === 0) return 0;
+  if (sortedSuccessDates.length === 0) {
+    return challenges.reduce((max, challenge) => {
+      const streak =
+        typeof challenge.currentStreak === "number"
+          ? challenge.currentStreak
+          : 0;
+      return Math.max(max, streak);
+    }, 0);
+  }
 
   let streak = 1;
 
@@ -386,9 +412,9 @@ const buildBadgeCalendar = (
 };
 
 const buildViewData = (
-  dashboardRes: any,
+  dashboardRes: DashboardLike | null,
   healthRecords: HealthRecord[],
-  storedUser: any,
+  storedUser: UserLike | null | undefined,
   challenges: ChallengeLike[],
   analysisItems: AnalysisHistoryLike[]
 ): GrowthRecordViewData => {
@@ -501,122 +527,11 @@ const buildViewData = (
   };
 };
 
-const mockGrowthData: GrowthRecordViewData = {
-  nickname: "d",
-  profileImage: "",
-  point: 120,
-  actualAge: 26,
-  firstRecordLabel: "4월 30일부터 기록 중",
-  streakDays: 3,
-  badgeCount: 2,
-  cardioAgeHistory: [
-    { label: "4/1", value: 27 },
-    { label: "4/8", value: 26 },
-    { label: "4/15", value: 25 },
-    { label: "4/22", value: 24 },
-    { label: "4/30", value: 24 },
-  ],
-  healthHistory: [
-    {
-      date: "4월 30일",
-      bp: "120/80",
-      glucose: 90,
-      cholesterol: 180,
-      cardioAge: 24,
-    },
-  ],
-  weeklyChallenge: [
-    { day: "월", value: 1 },
-    { day: "화", value: 1 },
-    { day: "수", value: 0 },
-    { day: "목", value: 0 },
-    { day: "금", value: 0 },
-    { day: "토", value: 0 },
-    { day: "일", value: 0 },
-  ],
-  challengeItems: [
-    {
-      id: "1",
-      title: "저염식",
-      description: "나트륨 섭취를 줄이고 가볍게 식사해보세요.",
-      icon: "🧂",
-      weekly: [
-        { day: "월", value: 1 },
-        { day: "화", value: 1 },
-        { day: "수", value: 0 },
-        { day: "목", value: 0 },
-        { day: "금", value: 0 },
-        { day: "토", value: 0 },
-        { day: "일", value: 0 },
-      ],
-    },
-    {
-      id: "2",
-      title: "포화지방 줄이기",
-      description: "튀김과 고지방 메뉴를 줄이는 챌린지예요.",
-      icon: "🥗",
-      weekly: [
-        { day: "월", value: 0 },
-        { day: "화", value: 1 },
-        { day: "수", value: 0 },
-        { day: "목", value: 0 },
-        { day: "금", value: 0 },
-        { day: "토", value: 0 },
-        { day: "일", value: 0 },
-      ],
-    },
-    {
-      id: "3",
-      title: "유산소 운동 20분",
-      description: "가볍게 숨이 찰 정도로 20분 움직여보세요.",
-      icon: "👟",
-      weekly: [
-        { day: "월", value: 0 },
-        { day: "화", value: 0 },
-        { day: "수", value: 0 },
-        { day: "목", value: 0 },
-        { day: "금", value: 0 },
-        { day: "토", value: 0 },
-        { day: "일", value: 0 },
-      ],
-    },
-  ],
-  earnedBadgeCount: 2,
-  badges: [
-    { name: "저염식", icon: "🧂", earned: true },
-    { name: "포화지방 줄이기", icon: "🥗", earned: true },
-    { name: "당류 줄이기", icon: "🍬", earned: false },
-    { name: "야식 금지", icon: "🌙", earned: false },
-    { name: "유산소 운동 20분", icon: "👟", earned: false },
-    { name: "하루 7,000보", icon: "🚶", earned: false },
-    { name: "식후 15분 걷기", icon: "🍃", earned: false },
-    { name: "물 2L 마시기", icon: "💧", earned: false },
-  ],
-  badgeCalendar: [
-    { date: "2026-5-1", badges: [{ name: "저염식", icon: "🧂" }] },
-    {
-      date: "2026-5-3",
-      streak: true,
-      badges: [{ name: "포화지방 줄이기", icon: "🥗" }],
-    },
-    {
-      date: "2026-5-4",
-      streak: true,
-      badges: [
-        { name: "저염식", icon: "🧂" },
-        { name: "포화지방 줄이기", icon: "🥗" },
-        { name: "유산소 운동 20분", icon: "👟" },
-      ],
-    },
-    { date: "2026-4-29", badges: [{ name: "운동 기록", icon: "💪" }] },
-    { date: "2026-4-30", badges: [{ name: "첫 기록", icon: "🌱" }] },
-  ],
-};
-
 export default function GrowthPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
   const healthRecordsRef = useRef<HealthRecord[]>([]);
+  const usingApiChallengesRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [viewData, setViewData] = useState<GrowthRecordViewData | null>(null);
@@ -624,16 +539,6 @@ export default function GrowthPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const isMockPreview =
-          process.env.NODE_ENV === "development" &&
-          new URLSearchParams(window.location.search).get("mock") === "1";
-
-        if (isMockPreview) {
-          setViewData(mockGrowthData);
-          setLoading(false);
-          return;
-        }
-
         const token = storage.getAccessToken();
 
         if (!token) {
@@ -658,7 +563,8 @@ export default function GrowthPage() {
           status: "in_progress",
           logs: [],
         }));
-        const challenges: ChallengeLike[] = apiChallenges.length > 0
+        usingApiChallengesRef.current = apiChallenges.length > 0;
+        const challenges: ChallengeLike[] = usingApiChallengesRef.current
           ? apiChallenges
           : (useChallengeStore.getState().challenges ?? []) as ChallengeLike[];
 
@@ -697,6 +603,7 @@ export default function GrowthPage() {
     const unsubscribe = useChallengeStore.subscribe((state) => {
       setViewData((prev) => {
         if (!prev) return prev;
+        if (usingApiChallengesRef.current) return prev;
 
         const challenges = (state.challenges ?? []) as ChallengeLike[];
         const badges = buildBadgesFromChallenges(challenges);
