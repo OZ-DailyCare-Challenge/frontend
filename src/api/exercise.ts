@@ -12,7 +12,11 @@ type ExerciseTaskResponse = {
 type TaskStatusResponse = {
   task_id: string;
   status: string;
-  result: any;
+  result: {
+    status?: string;
+    data?: Record<string, unknown>;
+    [key: string]: unknown;
+  } | null;
   error?: string | null;
 };
 
