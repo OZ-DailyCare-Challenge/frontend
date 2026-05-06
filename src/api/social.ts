@@ -31,12 +31,28 @@ export type Friend = {
 };
 
 export type FeedItem = {
+  challenge_id: number;
+  user_challenge_id: number;
+  challenge_log_id?: number | null;
   user_id: number;
   nickname: string;
   profile_image?: string | null;
   challenge_title: string;
-  log_date: string;
+  log_date?: string | null;
   current_streak: number;
+  created_at: string;
+  certified_today: boolean;
+};
+
+export type FeedNotification = {
+  id: number;
+  sender_id: number;
+  sender_nickname: string;
+  sender_profile_image?: string | null;
+  challenge_log_id?: number | null;
+  challenge_title?: string | null;
+  message: string;
+  read_at?: string | null;
   created_at: string;
 };
 
@@ -127,6 +143,34 @@ export async function getFeed(): Promise<FeedItem[]> {
   if (!response.ok) await parseErrorResponse(response, "피드 조회 실패");
   const data = await response.json();
   return data.items ?? [];
+}
+
+export async function sendFeedCheer(
+  targetUserId: number,
+  challengeLogId?: number | null
+): Promise<{ message?: string; notification_id?: number | null }> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/social/feed/cheer`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      target_user_id: targetUserId,
+      challenge_log_id: challengeLogId ?? null,
+    }),
+  });
+
+  if (!response.ok) await parseErrorResponse(response, "응원 보내기 실패");
+
+  return response.json();
+}
+
+export async function getFeedNotifications(): Promise<FeedNotification[]> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/social/feed/notifications`,
+    { method: "GET", headers: getAuthHeaders() }
+  );
+  if (!response.ok) await parseErrorResponse(response, "피드 응원 알림 조회 실패");
+  const data = await response.json();
+  return data.notifications ?? [];
 }
 
 export async function deleteFriend(friendId: number): Promise<void> {
