@@ -31,6 +31,7 @@ import {
 import { getHealthRecords, patchHealthRecord } from "@/src/api/health";
 import { storage } from "@/src/utils/storage";
 import { notificationStorage } from "@/src/utils/notificationStorage";
+import { sessionPoints } from "@/src/utils/sessionPoints";
 import { useAccessStore } from "@/src/store/access-store";
 import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 import type {
@@ -75,6 +76,12 @@ type HealthRecordLike = HealthRecord & {
     record_id?: number;
     id?: number;
   };
+};
+
+type AnalysisMission = {
+  title?: string;
+  action?: string;
+  reason?: string;
 };
 
 function resolveRecordId(
@@ -148,6 +155,17 @@ function formatRiskLabel(value?: string) {
   return value;
 }
 
+function normalizeAge(value: unknown) {
+  const age = Number(value);
+  return Number.isFinite(age) && age > 0 ? age : null;
+}
+
+function calculateAgeFromBirthYear(value: unknown) {
+  const birthYear = Number(value);
+  if (!Number.isFinite(birthYear) || birthYear <= 1900) return null;
+  return new Date().getFullYear() - birthYear + 1;
+}
+
 export default function MyPageContent() {
   const updateStoredProfile = useAccessStore((state) => state.updateStoredProfile);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -189,6 +207,9 @@ export default function MyPageContent() {
   const [notifications, setNotifications] = useState<NotificationSettings>(
     () => notificationStorage.get()
   );
+  const [sessionPointBalance, setSessionPointBalance] = useState(() =>
+    sessionPoints.initialize(storage.getUser?.()?.current_point ?? 0)
+  );
 
   const [loadingInit, setLoadingInit] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -229,11 +250,9 @@ export default function MyPageContent() {
           gender:
             typeof dashboard?.gender === "string" ? dashboard.gender : undefined,
           age:
-            typeof dashboard?.age === "number"
-              ? dashboard.age
-              : typeof dashboard?.age === "string"
-              ? Number(dashboard.age) || undefined
-              : undefined,
+            normalizeAge(dashboard?.age) ??
+            calculateAgeFromBirthYear(dashboard?.birth_year) ??
+            undefined,
           birth_year:
             typeof dashboard?.birth_year === "number"
               ? dashboard.birth_year
@@ -280,6 +299,9 @@ export default function MyPageContent() {
           normalizedRecords.length > 0 ? normalizedRecords[0] : null;
 
         setProfile(normalizedProfile);
+        setSessionPointBalance(
+          sessionPoints.initialize(normalizedProfile.current_point ?? 0)
+        );
         setHealthRecord(latestRecord);
         setAnalysisHistory(analysisResponse.items ?? []);
 
@@ -330,32 +352,44 @@ export default function MyPageContent() {
     void init();
   }, [updateStoredProfile]);
 
+  useEffect(() => {
+    const handlePointChange = () => setSessionPointBalance(sessionPoints.get());
+    window.addEventListener("session-points-change", handlePointChange);
+    return () =>
+      window.removeEventListener("session-points-change", handlePointChange);
+  }, []);
+
   const ageText = useMemo(() => {
-    const year = Number(profileForm.birth_year);
-    if (!year || year < 1900) return "-";
-    const currentYear = new Date().getFullYear();
-    return `${currentYear - year}세`;
-  }, [profileForm.birth_year]);
+    const profileBirthYear =
+      profile?.birth_year != null ? String(profile.birth_year) : "";
+    const shouldPreviewFormAge = profileForm.birth_year !== profileBirthYear;
+    const formAge = calculateAgeFromBirthYear(profileForm.birth_year);
+    const age = shouldPreviewFormAge
+      ? formAge
+      : normalizeAge(profile?.age) ?? formAge;
+
+    return age != null ? `${age}세` : "-";
+  }, [profile?.age, profile?.birth_year, profileForm.birth_year]);
 
   const displayEmail = profile?.email ?? "-";
-  const displayPoint =
-    typeof profile?.current_point === "number" ? profile.current_point : 0;
+  const displayPoint = sessionPointBalance;
 
   const latestAnalysis = analysisHistory[0] ?? null;
   const selectedAnalysis =
     selectedAnalysisGroup.find((item) => item.id === selectedAnalysisId) ??
     selectedAnalysisGroup[0] ??
     null;
-  const missions = useMemo(() => {
+  const missions = useMemo<AnalysisMission[]>(() => {
     if (!selectedAnalysis?.ai_missions) return [];
 
     if (Array.isArray(selectedAnalysis.ai_missions)) {
-      return selectedAnalysis.ai_missions;
+      return selectedAnalysis.ai_missions as AnalysisMission[];
     }
 
     if (typeof selectedAnalysis.ai_missions === "string") {
       try {
-        return JSON.parse(selectedAnalysis.ai_missions);
+        const parsed = JSON.parse(selectedAnalysis.ai_missions);
+        return Array.isArray(parsed) ? (parsed as AnalysisMission[]) : [];
       } catch {
         return [];
       }
@@ -419,11 +453,15 @@ export default function MyPageContent() {
       };
 
       const updated = await updateUserProfile(payload);
+      const nextAge =
+        normalizeAge(updated?.age) ??
+        calculateAgeFromBirthYear(profileForm.birth_year);
 
       const nextStoredUser = {
         ...(storage.getUser?.() ?? {}),
         nickname: updated.nickname ?? profileForm.nickname.trim(),
         birth_year: Number(profileForm.birth_year),
+        age: nextAge ?? undefined,
         profile_image:
           updated.profile_image ?? (profileForm.profile_image.trim() || ""),
       };
@@ -452,12 +490,7 @@ export default function MyPageContent() {
             prev?.gender ??
             (typeof updated?.gender === "string" ? updated.gender : undefined) ??
             profileForm.gender,
-          age:
-            typeof updated?.age === "number"
-              ? updated.age
-              : typeof updated?.age === "string"
-              ? Number(updated.age) || prev?.age
-              : prev?.age,
+          age: nextAge ?? prev?.age,
           birth_year: Number(profileForm.birth_year) || prev?.birth_year,
           height:
             typeof updated?.height === "number" ? updated.height : prev?.height,
@@ -675,7 +708,7 @@ export default function MyPageContent() {
             <OverviewStatCard
               icon={<Coins size={22} fill="currentColor" />}
               label="보유 포인트"
-              value={`${displayPoint}P`}
+              value={`${displayPoint.toLocaleString("ko-KR")}P`}
               sub="포인트 내역"
               tone="yellow"
             />
@@ -1093,7 +1126,7 @@ export default function MyPageContent() {
                         {missions.length > 0 ? (
                           <div className="mt-2 space-y-2">
                             {missions.map(
-                              (mission: any, index: number) => (
+                              (mission, index) => (
                                 <div
                                   key={index}
                                   className="rounded-[16px] bg-white px-4 py-3"

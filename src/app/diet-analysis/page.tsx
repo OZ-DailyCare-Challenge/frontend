@@ -10,7 +10,6 @@ import {
   Camera,
   CheckCircle2,
   ClipboardCheck,
-  Coins,
   Crown,
   ImagePlus,
   Loader2,
@@ -25,6 +24,8 @@ import type {
   RequestMealAnalysisResponse,
 } from "@/src/types/meals";
 import { requestMealAnalysis } from "@/src/api/meals";
+import { storage } from "@/src/utils/storage";
+import { sessionPoints } from "@/src/utils/sessionPoints";
 
 type PendingMealAnalysis = {
   taskId: string;
@@ -86,6 +87,9 @@ export default function DietAnalysisPage() {
 
   const [uploadHint, setUploadHint] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [pointBalance, setPointBalance] = useState(() =>
+    sessionPoints.initialize(storage.getUser()?.current_point ?? 0)
+  );
   const [hintType, setHintType] = useState<"success" | "error" | "info">(
     "info"
   );
@@ -95,6 +99,12 @@ export default function DietAnalysisPage() {
     [selectedFile, previewUrl]
   );
   const hasUploadError = Boolean(errorMessage);
+
+  useEffect(() => {
+    const handlePointChange = () => setPointBalance(sessionPoints.get());
+    window.addEventListener("session-points-change", handlePointChange);
+    return () => window.removeEventListener("session-points-change", handlePointChange);
+  }, []);
 
   useEffect(() => {
     if (!uploadHint) return;
@@ -266,6 +276,11 @@ export default function DietAnalysisPage() {
     try {
       setLoadingMode(mode);
       setErrorMessage("");
+      const chargedPoint =
+        mode === "premium"
+          ? sessionPoints.add(-300, "diet_premium", "프리미엄 식단 분석")
+          : pointBalance;
+      if (mode === "premium") setPointBalance(chargedPoint);
 
       const response: RequestMealAnalysisResponse = await requestMealAnalysis(
         selectedFile,
@@ -290,6 +305,11 @@ export default function DietAnalysisPage() {
 
       savePendingAndMove(taskId, mode, previewUrl);
     } catch (error) {
+      if (mode === "premium") {
+        setPointBalance(
+          sessionPoints.add(300, "diet_premium", "프리미엄 식단 분석 취소")
+        );
+      }
       console.error("식단 분석 요청 실패:", error);
       const message =
         mode === "premium"
@@ -674,6 +694,9 @@ export default function DietAnalysisPage() {
                 <p className="mt-2 text-sm leading-6 text-[#163126]/60">
                   더 자세하고 개인화된 분석을 받아보세요.
                 </p>
+                <p className="mt-3 inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#c67800]">
+                  보유 {pointBalance.toLocaleString("ko-KR")}P
+                </p>
 
                 <ul className="mt-5 space-y-3 text-sm font-bold text-[#163126]/70">
                   {[
@@ -691,7 +714,7 @@ export default function DietAnalysisPage() {
                 <div className="mt-5 flex h-12 items-center justify-center gap-2 rounded-xl bg-[#f1a21d] text-sm font-black text-white">
                   프리미엄 분석하기
                   <span className="rounded-full bg-white/24 px-2 py-1 text-[11px]">
-                    300포인트 사용
+                    -300포인트
                   </span>
                 </div>
               </motion.button>

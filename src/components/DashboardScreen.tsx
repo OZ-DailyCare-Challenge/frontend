@@ -23,7 +23,15 @@ import {
   type Challenge as ApiChallenge,
   type MyActiveChallenge,
 } from "@/src/api/challenge";
-import { getFeed, getFriendRequests, type FeedItem } from "@/src/api/social";
+import {
+  getFeed,
+  getFeedNotifications,
+  getFriendRequests,
+  sendFeedCheer,
+  type FeedItem,
+} from "@/src/api/social";
+import { notificationStorage } from "@/src/utils/notificationStorage";
+import { sessionPoints } from "@/src/utils/sessionPoints";
 import HealthGuidePanel from "@/src/components/dashboard/HealthGuidePanel";
 import DashboardBottomBuddy from "@/src/components/dashboard/DashboardBottomBuddy";
 import FriendAddModal from "@/src/components/social/FriendAddModal";
@@ -72,6 +80,7 @@ type HeroReactionType = "none" | "success" | "streak";
 
 const DASHBOARD_HERO_BG = "/images/skygreen.png";
 const TODAY_HEALTH_RECORD_KEY = "dashboard:today-health-record";
+const FEED_NOTIFICATION_SEEN_KEY = "social-feed-notification-seen-ids";
 const defaultTodayHealthRecord: TodayHealthRecord = {
   heartRate: "",
   sleepHours: "",
@@ -110,6 +119,42 @@ function getStressLabel(value: string) {
   if (numeric >= 70) return "높음";
   if (numeric >= 40) return "보통";
   return "낮음";
+}
+
+function parseFeedLogDate(logDate?: string | null) {
+  if (!logDate) return null;
+
+  const [year, month, day] = logDate.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  return new Date(year, month - 1, day);
+}
+
+function getFeedTodayStatusLabel(item: FeedItem) {
+  return item.certified_today ? "오늘 인증 완료" : "오늘 아직 인증하지 않았어요";
+}
+
+function getFriendTodaySummary(challenges: FeedItem[]) {
+  const certifiedCount = challenges.filter((item) => item.certified_today).length;
+  const pendingCount = challenges.length - certifiedCount;
+
+  if (certifiedCount > 0 && pendingCount > 0) {
+    return `오늘 ${certifiedCount}개 인증 · ${pendingCount}개 미인증`;
+  }
+  if (certifiedCount > 0) return `오늘 ${certifiedCount}개 인증 완료`;
+  return "오늘 아직 인증하지 않았어요";
+}
+
+function getFeedItemTime(item: FeedItem) {
+  const createdAtTime = new Date(item.created_at).getTime();
+  if (Number.isFinite(createdAtTime)) return createdAtTime;
+
+  const logDate = parseFeedLogDate(item.log_date);
+  return logDate?.getTime() ?? 0;
+}
+
+function getFeedChallengeKey(item: FeedItem) {
+  return item.challenge_title.trim().toLowerCase();
 }
 
 const feedCardVariants = {
@@ -248,6 +293,9 @@ function getHeroBubbleMessage(type: HeroReactionType) {
 
 const mockFeedItems: FeedItem[] = [
   {
+    challenge_id: 101,
+    user_challenge_id: 1001,
+    challenge_log_id: 1,
     user_id: 1,
     nickname: "민지",
     profile_image: null,
@@ -255,17 +303,25 @@ const mockFeedItems: FeedItem[] = [
     log_date: "2026-05-04",
     current_streak: 4,
     created_at: "2026-05-04T09:20:00",
+    certified_today: true,
   },
   {
+    challenge_id: 102,
+    user_challenge_id: 1002,
+    challenge_log_id: null,
     user_id: 1,
     nickname: "민지",
     profile_image: null,
     challenge_title: "저염 식단 실천",
-    log_date: "2026-05-04",
+    log_date: null,
     current_streak: 3,
     created_at: "2026-05-04T12:10:00",
+    certified_today: false,
   },
   {
+    challenge_id: 103,
+    user_challenge_id: 1003,
+    challenge_log_id: 3,
     user_id: 2,
     nickname: "준호",
     profile_image: null,
@@ -273,15 +329,20 @@ const mockFeedItems: FeedItem[] = [
     log_date: "2026-05-04",
     current_streak: 5,
     created_at: "2026-05-04T18:30:00",
+    certified_today: true,
   },
   {
+    challenge_id: 104,
+    user_challenge_id: 1004,
+    challenge_log_id: null,
     user_id: 3,
     nickname: "서연",
     profile_image: null,
     challenge_title: "스트레칭하기",
-    log_date: "2026-05-04",
+    log_date: null,
     current_streak: 2,
     created_at: "2026-05-04T21:00:00",
+    certified_today: false,
   },
 ];
 
@@ -330,7 +391,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [cheeredKeys, setCheeredKeys] = useState<Set<string>>(new Set());
   const [shopOpen, setShopOpen] = useState(false);
   const [shopTab, setShopTab] = useState<ShopTab>("모자");
-  const [points, setPoints] = useState(dashboardData.point);
+  const [points, setPoints] = useState(() =>
+    sessionPoints.initialize(dashboardData.point)
+  );
   const [shopItems, setShopItems] = useState(initialShopItems);
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
@@ -342,6 +405,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [friendRequestOpen, setFriendRequestOpen] = useState(false);
   const [friendActivityOpen, setFriendActivityOpen] = useState(false);
   const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [feedNotificationMessage, setFeedNotificationMessage] = useState("");
   const [healthRecordOpen, setHealthRecordOpen] = useState(false);
   const [todayHealthRecord, setTodayHealthRecord] = useState<TodayHealthRecord>(
     loadTodayHealthRecord
@@ -423,6 +487,62 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
       .catch(() => setMyActiveChallenges([]));
   }, []);
 
+  useEffect(() => {
+    if (mock) return;
+
+    const loadSeenIds = () => {
+      try {
+        return new Set<number>(
+          JSON.parse(
+            window.localStorage.getItem(FEED_NOTIFICATION_SEEN_KEY) ?? "[]"
+          )
+        );
+      } catch {
+        return new Set<number>();
+      }
+    };
+
+    const saveSeenIds = (ids: Set<number>) => {
+      window.localStorage.setItem(
+        FEED_NOTIFICATION_SEEN_KEY,
+        JSON.stringify([...ids].slice(-100))
+      );
+    };
+
+    const pollNotifications = async () => {
+      if (!notificationStorage.isFriendAlertOn()) return;
+
+      try {
+        const notifications = await getFeedNotifications();
+        const seenIds = loadSeenIds();
+        const unseen = notifications.filter((item) => !seenIds.has(item.id));
+
+        if (unseen.length > 0) {
+          const latest = unseen[0];
+          setFeedNotificationMessage(latest.message);
+          window.setTimeout(() => setFeedNotificationMessage(""), 3500);
+        }
+
+        notifications.forEach((item) => seenIds.add(item.id));
+        saveSeenIds(seenIds);
+      } catch {
+        // 알림 polling 실패는 화면 흐름을 막지 않는다.
+      }
+    };
+
+    void pollNotifications();
+    const interval = window.setInterval(pollNotifications, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [mock]);
+
+  useEffect(() => {
+    sessionPoints.initialize(dashboardData.point);
+    const handlePointChange = () => setPoints(sessionPoints.get());
+    window.addEventListener("session-points-change", handlePointChange);
+    return () => window.removeEventListener("session-points-change", handlePointChange);
+  }, [dashboardData.point]);
+
   const groupedFeedItems = useMemo(() => {
     const map = new Map<
       number,
@@ -430,15 +550,19 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
         user_id: number;
         nickname: string;
         profile_image?: string | null;
-        challenges: FeedItem[];
+        challengeMap: Map<string, FeedItem>;
       }
     >();
 
     feedItems.forEach((item) => {
       const existing = map.get(item.user_id);
+      const challengeKey = getFeedChallengeKey(item);
 
       if (existing) {
-        existing.challenges.push(item);
+        const current = existing.challengeMap.get(challengeKey);
+        if (!current || getFeedItemTime(item) > getFeedItemTime(current)) {
+          existing.challengeMap.set(challengeKey, item);
+        }
         return;
       }
 
@@ -446,11 +570,18 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
         user_id: item.user_id,
         nickname: item.nickname,
         profile_image: item.profile_image,
-        challenges: [item],
+        challengeMap: new Map([[challengeKey, item]]),
       });
     });
 
-    return Array.from(map.values());
+    return Array.from(map.values()).map((friend) => ({
+      user_id: friend.user_id,
+      nickname: friend.nickname,
+      profile_image: friend.profile_image,
+      challenges: Array.from(friend.challengeMap.values()).sort(
+        (a, b) => Number(b.certified_today) - Number(a.certified_today) || getFeedItemTime(b) - getFeedItemTime(a)
+      ),
+    }));
   }, [feedItems]);
 
   const activeFeed = groupedFeedItems[activeFeedIndex] ?? null;
@@ -542,8 +673,26 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
     return () => window.clearTimeout(timer);
   }, [heroReactionType]);
 
-  const handleCheer = (key: string) => {
+  const handleCheer = async (
+    key: string,
+    targetUserId: number,
+    challengeLogId?: number | null
+  ) => {
+    if (cheeredKeys.has(key)) return;
+
     setCheeredKeys((prev) => new Set(prev).add(key));
+
+    try {
+      await sendFeedCheer(targetUserId, challengeLogId);
+    } catch (error) {
+      console.error("응원 보내기 실패:", error);
+      setCheeredKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      alert("응원 보내기에 실패했어요.");
+    }
   };
 
   const handleEquip = (target: ShopItem) => {
@@ -569,7 +718,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const handleBuy = (target: ShopItem) => {
     if (target.owned || points < target.price) return;
 
-    setPoints((prev) => prev - target.price);
+    setPoints(sessionPoints.add(-target.price, "shop_purchase", `${target.name} 구매`));
     setShopItems((prev) =>
       prev.map((item) =>
         item.id === target.id ? { ...item, owned: true } : item
@@ -1016,8 +1165,12 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                         className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))]"
                       >
                         {visibleFriends.map((friend) => {
-                          const cheerKey = `feed-${friend.user_id}`;
+                          const targetLog =
+                            friend.challenges.find((challenge) => challenge.certified_today) ??
+                            friend.challenges[0];
+                          const cheerKey = `friend-${friend.user_id}`;
                           const cheered = cheeredKeys.has(cheerKey);
+                          const todaySummary = getFriendTodaySummary(friend.challenges);
 
                           return (
                             <div
@@ -1038,13 +1191,19 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                       {friend.nickname}
                                     </p>
                                     <p className="mt-1 text-xs text-[#163126]/45">
-                                      오늘 인증 완료
+                                      {todaySummary}
                                     </p>
                                   </div>
                                 </div>
 
                                 <button
-                                  onClick={() => handleCheer(cheerKey)}
+                                  onClick={() =>
+                                    handleCheer(
+                                      cheerKey,
+                                      friend.user_id,
+                                      targetLog?.challenge_log_id
+                                    )
+                                  }
                                   disabled={cheered}
                                   className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
                                     cheered
@@ -1071,9 +1230,20 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                         {challenge.challenge_title}
                                       </span>
 
-                                      <span className="shrink-0 rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
-                                        {challenge.current_streak}일
-                                      </span>
+                                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                        <span
+                                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                            challenge.certified_today
+                                              ? "bg-[#ecf9f1] text-[#2E7D5B]"
+                                              : "bg-[#f2f4f3] text-[#163126]/45"
+                                          }`}
+                                        >
+                                          {getFeedTodayStatusLabel(challenge)}
+                                        </span>
+                                        <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                          {challenge.current_streak}일
+                                        </span>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1165,6 +1335,24 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
             onUnequip={handleUnequip}
             onBuy={handleBuy}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {feedNotificationMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            className="fixed bottom-6 left-1/2 z-[90] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-[22px] border border-[#cfe9d7] bg-white px-5 py-4 text-sm font-bold text-[#163126] shadow-[0_18px_50px_rgba(22,49,38,0.16)]"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#ecf9f1] text-[#2E7D5B]">
+                <Heart size={17} fill="currentColor" />
+              </span>
+              <p className="min-w-0 leading-6">{feedNotificationMessage}</p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>
@@ -1429,7 +1617,7 @@ function FriendActivityModal({
   open: boolean;
   onClose: () => void;
   friends: GroupedFeedFriend[];
-  onCheer: (key: string) => void;
+  onCheer: (key: string, targetUserId: number, challengeLogId?: number | null) => void;
   cheeredKeys: Set<string>;
 }) {
   useEffect(() => {
@@ -1456,7 +1644,7 @@ function FriendActivityModal({
               친구 활동 전체보기
             </h2>
             <p className="mt-1 text-sm text-[#163126]/55">
-              친구들의 오늘 챌린지 인증 기록을 모아봤어요.
+              친구들의 오늘 챌린지 상태를 모아봤어요.
             </p>
           </div>
 
@@ -1488,8 +1676,12 @@ function FriendActivityModal({
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {friends.map((friend) => {
-                const cheerKey = `feed-${friend.user_id}`;
+                const targetLog =
+                  friend.challenges.find((challenge) => challenge.certified_today) ??
+                  friend.challenges[0];
+                const cheerKey = `friend-${friend.user_id}`;
                 const cheered = cheeredKeys.has(cheerKey);
+                const todaySummary = getFriendTodaySummary(friend.challenges);
 
                 return (
                   <div
@@ -1510,14 +1702,16 @@ function FriendActivityModal({
                             {friend.nickname}
                           </p>
                           <p className="mt-1 text-xs text-[#163126]/45">
-                            오늘 인증 {friend.challenges.length}개
+                            {todaySummary}
                           </p>
                         </div>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() => onCheer(cheerKey)}
+                        onClick={() =>
+                          onCheer(cheerKey, friend.user_id, targetLog?.challenge_log_id)
+                        }
                         disabled={cheered}
                         className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${
                           cheered
@@ -1539,9 +1733,20 @@ function FriendActivityModal({
                             <span className="min-w-0 truncate text-sm font-semibold text-[#163126]">
                               {challenge.challenge_title}
                             </span>
-                            <span className="shrink-0 rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
-                              {challenge.current_streak}일
-                            </span>
+                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  challenge.certified_today
+                                    ? "bg-[#ecf9f1] text-[#2E7D5B]"
+                                    : "bg-[#f2f4f3] text-[#163126]/45"
+                                }`}
+                              >
+                                {getFeedTodayStatusLabel(challenge)}
+                              </span>
+                              <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                {challenge.current_streak}일
+                              </span>
+                            </div>
                           </div>
                         </div>
                       ))}
