@@ -456,8 +456,8 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   useEffect(() => {
     if (mock) {
-      setFeedItems(mockFeedItems);
-      return;
+      const timer = window.setTimeout(() => setFeedItems(mockFeedItems), 0);
+      return () => window.clearTimeout(timer);
     }
 
     getFeed().then(setFeedItems).catch(() => {});
@@ -465,8 +465,8 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   useEffect(() => {
     if (mock) {
-      setFriendRequestCount(2);
-      return;
+      const timer = window.setTimeout(() => setFriendRequestCount(2), 0);
+      return () => window.clearTimeout(timer);
     }
 
     const loadRequestCount = () => {
@@ -660,17 +660,23 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   useEffect(() => {
     if (heroReactionType === "none") {
-      setBubbleMessage("");
-      return;
+      const timer = window.setTimeout(() => setBubbleMessage(""), 0);
+      return () => window.clearTimeout(timer);
     }
 
-    setBubbleMessage(getHeroBubbleMessage(heroReactionType));
+    const showTimer = window.setTimeout(
+      () => setBubbleMessage(getHeroBubbleMessage(heroReactionType)),
+      0
+    );
 
-    const timer = window.setTimeout(() => {
+    const hideTimer = window.setTimeout(() => {
       setBubbleMessage("");
     }, 3500);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+    };
   }, [heroReactionType]);
 
   const handleCheer = async (
@@ -1481,7 +1487,10 @@ function HealthRecordInputModal({
   const [draft, setDraft] = useState<TodayHealthRecord>(value);
 
   useEffect(() => {
-    if (open) setDraft(value);
+    if (!open) return;
+
+    const timer = window.setTimeout(() => setDraft(value), 0);
+    return () => window.clearTimeout(timer);
   }, [open, value]);
 
   if (!open) return null;

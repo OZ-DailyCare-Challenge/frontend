@@ -1958,22 +1958,26 @@ function ExerciseVerifyModal({
 
   useEffect(() => {
     if (!open) {
-      setFile(null);
-      setPreviewUrl("");
-      setLocalError("");
+      const timer = window.setTimeout(() => {
+        setFile(null);
+        setPreviewUrl("");
+        setLocalError("");
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [open]);
 
   useEffect(() => {
     if (!file) {
-      setPreviewUrl("");
-      return;
+      const timer = window.setTimeout(() => setPreviewUrl(""), 0);
+      return () => window.clearTimeout(timer);
     }
 
     const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+    const timer = window.setTimeout(() => setPreviewUrl(objectUrl), 0);
 
     return () => {
+      window.clearTimeout(timer);
       URL.revokeObjectURL(objectUrl);
     };
   }, [file]);

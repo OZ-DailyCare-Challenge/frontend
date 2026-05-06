@@ -144,9 +144,11 @@ export default function SocialFeedPage() {
       new URLSearchParams(window.location.search).get("mock") === "1";
 
     if (isMockPreview) {
-      setItems(mockFeedItems);
-      setLoading(false);
-      return;
+      const timer = window.setTimeout(() => {
+        setItems(mockFeedItems);
+        setLoading(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
     getFeed()
