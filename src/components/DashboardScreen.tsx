@@ -408,6 +408,8 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const feedCarouselRef = useRef<HTMLDivElement | null>(null);
   const feedCardRefs = useRef<Array<HTMLDivElement | null>>([]);
   const feedScrollFrame = useRef<number | null>(null);
+  const feedProgrammaticScroll = useRef(false);
+  const feedProgrammaticScrollTimer = useRef<number | null>(null);
 
   const healthRecordItems = useMemo(
     () => [
@@ -610,6 +612,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
       if (feedScrollFrame.current !== null) {
         window.cancelAnimationFrame(feedScrollFrame.current);
       }
+      if (feedProgrammaticScrollTimer.current !== null) {
+        window.clearTimeout(feedProgrammaticScrollTimer.current);
+      }
     };
   }, []);
 
@@ -622,6 +627,8 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, [normalizedActiveFeedIndex]);
 
   const handleFeedCarouselScroll = () => {
+    if (feedProgrammaticScroll.current) return;
+
     if (feedScrollFrame.current !== null) {
       window.cancelAnimationFrame(feedScrollFrame.current);
     }
@@ -651,18 +658,33 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
     });
   };
 
+  const selectFeedIndex = (index: number) => {
+    feedProgrammaticScroll.current = true;
+    if (feedProgrammaticScrollTimer.current !== null) {
+      window.clearTimeout(feedProgrammaticScrollTimer.current);
+    }
+    feedProgrammaticScrollTimer.current = window.setTimeout(() => {
+      feedProgrammaticScroll.current = false;
+    }, 450);
+    setActiveFeedIndex(index);
+    feedCardRefs.current[index]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  };
+
   const handlePrevFeed = () => {
-    setActiveFeedIndex((prev) =>
-      groupedFeedItems.length
-        ? (prev - 1 + groupedFeedItems.length) % groupedFeedItems.length
-        : 0
+    if (!groupedFeedItems.length) return;
+    selectFeedIndex(
+      (normalizedActiveFeedIndex - 1 + groupedFeedItems.length) %
+        groupedFeedItems.length
     );
   };
 
   const handleNextFeed = () => {
-    setActiveFeedIndex((prev) =>
-      groupedFeedItems.length ? (prev + 1) % groupedFeedItems.length : 0
-    );
+    if (!groupedFeedItems.length) return;
+    selectFeedIndex((normalizedActiveFeedIndex + 1) % groupedFeedItems.length);
   };
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
@@ -1218,7 +1240,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                       <button
                         key={friend.user_id}
                         onClick={() => {
-                          setActiveFeedIndex(index);
+                          selectFeedIndex(index);
                         }}
                         className={`relative flex shrink-0 flex-col items-center gap-2 rounded-2xl px-1.5 py-1 transition duration-200 ${
                           active
@@ -1414,7 +1436,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                       <button
                         key={`dot-${friend.user_id}`}
                         onClick={() => {
-                          setActiveFeedIndex(index);
+                          selectFeedIndex(index);
                         }}
                         className={`h-2 rounded-full transition-all ${
                           index === normalizedActiveFeedIndex
