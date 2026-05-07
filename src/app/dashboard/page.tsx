@@ -13,6 +13,7 @@ import { storage } from "@/src/utils/storage";
 import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
+import type { Challenge } from "@/src/lib/challenge-data";
 
 type HealthRecordLike = {
   id?: number;
@@ -33,11 +34,6 @@ type AnalysisHistoryLike = {
   cvd_age?: number;
   top_risk_factors?: string[];
   created_at?: string;
-};
-
-type ChallengeLike = {
-  id: number | string;
-  currentStreak?: number;
 };
 
 type DashboardResponseLike = {
@@ -150,8 +146,10 @@ const buildRiskTags = (
 };
 
 const getChallengeSummaryFromStore = () => {
-  const challenges = (useChallengeStore.getState().challenges ??
-    []) as ChallengeLike[];
+  const { challenges = [], streak = 0 } = useChallengeStore.getState() as {
+    challenges?: Challenge[];
+    streak?: number;
+  };
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const challengeProgress = todayChallenges.length
@@ -161,11 +159,6 @@ const getChallengeSummaryFromStore = () => {
           100
       )
     : 0;
-
-  const streak = Math.max(
-    0,
-    ...challenges.map((challenge) => Number(challenge.currentStreak ?? 0))
-  );
 
   return { streak, challengeProgress };
 };
