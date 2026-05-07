@@ -32,6 +32,10 @@ import {
 } from "@/src/api/social";
 import { notificationStorage } from "@/src/utils/notificationStorage";
 import { sessionPoints } from "@/src/utils/sessionPoints";
+import {
+  TODAY_CHALLENGE_PROGRESS_EVENT,
+  todayChallengeProgress,
+} from "@/src/utils/todayChallengeProgress";
 import HealthGuidePanel from "@/src/components/dashboard/HealthGuidePanel";
 import DashboardBottomBuddy from "@/src/components/dashboard/DashboardBottomBuddy";
 import FriendAddModal from "@/src/components/social/FriendAddModal";
@@ -398,6 +402,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [myActiveChallenges, setMyActiveChallenges] = useState<MyActiveChallenge[]>([]);
+  const [certifiedTodayIds, setCertifiedTodayIds] = useState<Set<number>>(
+    () => todayChallengeProgress.getIds()
+  );
   const [activeFeedIndex, setActiveFeedIndex] = useState(0);
   const [dragDirection, setDragDirection] = useState(0);
   const [guidePanelOpen, setGuidePanelOpen] = useState(true);
@@ -488,6 +495,19 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, []);
 
   useEffect(() => {
+    const syncCertifiedIds = () =>
+      setCertifiedTodayIds(todayChallengeProgress.getIds());
+
+    window.addEventListener(TODAY_CHALLENGE_PROGRESS_EVENT, syncCertifiedIds);
+    window.addEventListener("focus", syncCertifiedIds);
+
+    return () => {
+      window.removeEventListener(TODAY_CHALLENGE_PROGRESS_EVENT, syncCertifiedIds);
+      window.removeEventListener("focus", syncCertifiedIds);
+    };
+  }, []);
+
+  useEffect(() => {
     if (mock) return;
 
     const loadSeenIds = () => {
@@ -537,10 +557,15 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, [mock]);
 
   useEffect(() => {
-    sessionPoints.initialize(dashboardData.point);
+    const timer = window.setTimeout(() => {
+      setPoints(sessionPoints.initialize(dashboardData.point));
+    }, 0);
     const handlePointChange = () => setPoints(sessionPoints.get());
     window.addEventListener("session-points-change", handlePointChange);
-    return () => window.removeEventListener("session-points-change", handlePointChange);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("session-points-change", handlePointChange);
+    };
   }, [dashboardData.point]);
 
   const groupedFeedItems = useMemo(() => {
@@ -618,7 +643,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const activeChallengeCount = myActiveChallenges.length;
-  const completedTodayCount = 0;
+  const completedTodayCount = myActiveChallenges.filter((challenge) =>
+    certifiedTodayIds.has(challenge.user_challenge_id)
+  ).length;
 
   const dashboardChallengePercent = activeChallengeCount
     ? Math.round((completedTodayCount / activeChallengeCount) * 100)
@@ -627,6 +654,15 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const challengePercent = todayChallenges.length
     ? Math.round((completedCount / todayChallenges.length) * 100)
     : 0;
+  const todayTaskPercent = activeChallengeCount
+    ? dashboardChallengePercent
+    : challengePercent;
+  const todayTaskCompletedCount = activeChallengeCount
+    ? completedTodayCount
+    : completedCount;
+  const todayTaskTotalCount = activeChallengeCount
+    ? activeChallengeCount
+    : todayChallenges.length;
 
   const equippedItems = shopItems.filter((item) => item.equipped);
 
@@ -929,19 +965,28 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 />
               </div>
 
-              <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#163126]/8">
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <p className="text-xs font-bold text-[#163126]/60">
+                  오늘 챌린지 달성률
+                </p>
+                <p className="text-xs font-semibold text-[#2E7D5B]">
+                  {todayTaskCompletedCount}/{todayTaskTotalCount} 완료
+                </p>
+              </div>
+
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#163126]/8">
                 <div
                   className="h-full rounded-full bg-[linear-gradient(90deg,#8ce7a7,#b7f3c9)]"
                   style={{
                     width: `${Math.max(
                       0,
-                      Math.min(100, dashboardData.challengeProgress)
+                      Math.min(100, todayTaskPercent)
                     )}%`,
                   }}
                 />
               </div>
               <p className="mt-2 text-xs text-[#163126]/52">
-                {dashboardData.challengeProgress}% 달성
+                오늘 진행 중인 챌린지 기준 {todayTaskPercent}% 달성
               </p>
               </motion.div>
 
@@ -1033,24 +1078,38 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                     진행 중인 챌린지가 없어요.
                   </div>
                 ) : (
-                  myActiveChallenges.slice(0, 3).map((challenge) => (
-                    <div
-                      key={challenge.user_challenge_id}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-[#163126]">
-                          {challenge.title}
-                        </p>
-                        <p className="mt-1 text-xs text-[#163126]/45">
-                          {challenge.current_streak}일 연속 진행 중
-                        </p>
+                  myActiveChallenges.slice(0, 3).map((challenge) => {
+                    const certifiedToday = certifiedTodayIds.has(
+                      challenge.user_challenge_id
+                    );
+
+                    return (
+                      <div
+                        key={challenge.user_challenge_id}
+                        className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-[#163126]">
+                            {challenge.title}
+                          </p>
+                          <p className="mt-1 text-xs text-[#163126]/45">
+                            {certifiedToday
+                              ? "오늘 인증 완료"
+                              : `${challenge.current_streak}일 연속 진행 중`}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            certifiedToday
+                              ? "bg-[#2E7D5B] text-white"
+                              : "bg-[#ecf9f1] text-[#2E7D5B]"
+                          }`}
+                        >
+                          {certifiedToday ? "완료" : "진행중"}
+                        </span>
                       </div>
-                      <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
-                        진행중
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </motion.div>

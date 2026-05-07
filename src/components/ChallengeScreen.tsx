@@ -32,6 +32,7 @@ import {
 } from "@/src/api/exercise";
 import { storage } from "@/src/utils/storage";
 import { sessionPoints } from "@/src/utils/sessionPoints";
+import { todayChallengeProgress } from "@/src/utils/todayChallengeProgress";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import type {
   Challenge as StoredChallenge,
@@ -884,6 +885,7 @@ export default function ChallengeScreen() {
     updateBaseChallenge(updatedChallenge);
     persistChallengeItemToStorage(updatedChallenge);
     removeCurrentChallengeCache();
+    todayChallengeProgress.markCertified(logResult.user_challenge_id);
     triggerCardPulse(challenge.id);
     const earnedPoint = getChallengeRewardPoint(challenge);
     sessionPoints.add(

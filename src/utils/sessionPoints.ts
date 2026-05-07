@@ -56,7 +56,10 @@ export const sessionPoints = {
   },
 
   initialize(points: number) {
-    if (!this.has()) this.set(points);
+    const normalizedPoints = Number.isFinite(points) ? points : 0;
+    if (!this.has() || readEvents().length === 0) {
+      this.set(normalizedPoints);
+    }
     return this.get();
   },
 
