@@ -135,7 +135,7 @@ function parseFeedLogDate(logDate?: string | null) {
 }
 
 function getFeedTodayStatusLabel(item: FeedItem) {
-  return item.certified_today ? "오늘 인증 완료" : "오늘 아직 인증하지 않았어요";
+  return item.certified_today ? "인증 완료" : "";
 }
 
 function getFriendTodaySummary(challenges: FeedItem[]) {
@@ -1072,13 +1072,13 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 />
               </div>
 
-              <div className="space-y-3">
+              <div className="max-h-[282px] space-y-3 overflow-y-auto pr-1">
                 {myActiveChallenges.length === 0 ? (
                   <div className="rounded-2xl bg-[#f8fbf8] px-4 py-5 text-sm text-[#163126]/50">
                     진행 중인 챌린지가 없어요.
                   </div>
                 ) : (
-                  myActiveChallenges.slice(0, 3).map((challenge) => {
+                  myActiveChallenges.map((challenge) => {
                     const certifiedToday = certifiedTodayIds.has(
                       challenge.user_challenge_id
                     );
@@ -1289,22 +1289,18 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                   {friend.challenges.slice(0, 2).map((challenge) => (
                                     <div
                                       key={`${challenge.user_id}-${challenge.challenge_title}-${challenge.created_at}`}
-                                      className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3"
+                                      className="flex items-start justify-between gap-3 rounded-2xl bg-white px-3 py-3"
                                     >
-                                      <span className="min-w-0 truncate text-sm font-semibold text-[#163126]">
+                                      <span className="min-w-0 flex-1 break-keep text-sm font-semibold leading-5 text-[#163126]">
                                         {challenge.challenge_title}
                                       </span>
 
                                       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                                        <span
-                                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                            challenge.certified_today
-                                              ? "bg-[#ecf9f1] text-[#2E7D5B]"
-                                              : "bg-[#f2f4f3] text-[#163126]/45"
-                                          }`}
-                                        >
-                                          {getFeedTodayStatusLabel(challenge)}
-                                        </span>
+                                        {challenge.certified_today && (
+                                          <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                            {getFeedTodayStatusLabel(challenge)}
+                                          </span>
+                                        )}
                                         <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
                                           {challenge.current_streak}일
                                         </span>
@@ -1791,26 +1787,22 @@ function FriendActivityModal({
                       </button>
                     </div>
 
-                    <div className="mt-5 space-y-2">
+                    <div className="mt-5 max-h-[174px] space-y-2 overflow-y-auto pr-1">
                       {friend.challenges.map((challenge) => (
                         <div
                           key={`all-${challenge.user_id}-${challenge.challenge_title}-${challenge.created_at}`}
                           className="rounded-2xl bg-white px-4 py-3"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="min-w-0 truncate text-sm font-semibold text-[#163126]">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="min-w-0 flex-1 break-keep text-sm font-semibold leading-5 text-[#163126]">
                               {challenge.challenge_title}
                             </span>
                             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                  challenge.certified_today
-                                    ? "bg-[#ecf9f1] text-[#2E7D5B]"
-                                    : "bg-[#f2f4f3] text-[#163126]/45"
-                                }`}
-                              >
-                                {getFeedTodayStatusLabel(challenge)}
-                              </span>
+                              {challenge.certified_today && (
+                                <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                  {getFeedTodayStatusLabel(challenge)}
+                                </span>
+                              )}
                               <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
                                 {challenge.current_streak}일
                               </span>
