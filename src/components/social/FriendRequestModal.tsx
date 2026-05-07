@@ -17,16 +17,18 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onChanged?: (count: number) => void;
+  onCheerChanged?: (count: number) => void;
 };
 
 type ActiveTab = "requests" | "cheers";
 
-const CHEER_NOTIFICATION_READ_KEY = "social-feed-notification-read-ids";
+export const CHEER_NOTIFICATION_READ_KEY = "social-feed-notification-read-ids";
 
 export default function FriendRequestModal({
   open,
   onClose,
   onChanged,
+  onCheerChanged,
 }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("requests");
   const [requests, setRequests] = useState<FriendRequest[]>([]);
@@ -70,7 +72,9 @@ export default function FriendRequestModal({
     const next = loadReadNotificationIds();
     notifications.forEach((item) => next.add(item.id));
     saveReadNotificationIds(next);
-  }, [activeTab, notifications, open]);
+    setReadNotificationIds(next);
+    onCheerChanged?.(0);
+  }, [activeTab, notifications, onCheerChanged, open]);
 
   if (!open) return null;
 
@@ -97,6 +101,10 @@ export default function FriendRequestModal({
       setLoadingNotifications(true);
       const data = await getFeedNotifications();
       setNotifications(data);
+      const readIds = loadReadNotificationIds();
+      onCheerChanged?.(
+        data.filter((item) => !item.read_at && !readIds.has(item.id)).length
+      );
     } catch {
       showMessage("응원 알림을 불러오지 못했어요.");
     } finally {

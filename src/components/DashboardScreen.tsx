@@ -42,7 +42,9 @@ import {
 import HealthGuidePanel from "@/src/components/dashboard/HealthGuidePanel";
 import DashboardBottomBuddy from "@/src/components/dashboard/DashboardBottomBuddy";
 import FriendAddModal from "@/src/components/social/FriendAddModal";
-import FriendRequestModal from "@/src/components/social/FriendRequestModal";
+import FriendRequestModal, {
+  CHEER_NOTIFICATION_READ_KEY,
+} from "@/src/components/social/FriendRequestModal";
 import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
 
 type ShopTab = "모자" | "옷/스카프" | "액세서리" | "배경";
@@ -400,6 +402,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [friendRequestOpen, setFriendRequestOpen] = useState(false);
   const [friendActivityOpen, setFriendActivityOpen] = useState(false);
   const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [friendCheerCount, setFriendCheerCount] = useState(0);
   const [feedNotificationMessage, setFeedNotificationMessage] = useState("");
   const [healthRecordOpen, setHealthRecordOpen] = useState(false);
   const [todayHealthRecord, setTodayHealthRecord] = useState<TodayHealthRecord>(
@@ -465,7 +468,10 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   useEffect(() => {
     if (mock) {
-      const timer = window.setTimeout(() => setFriendRequestCount(2), 0);
+      const timer = window.setTimeout(() => {
+        setFriendRequestCount(2);
+        setFriendCheerCount(1);
+      }, 0);
       return () => window.clearTimeout(timer);
     }
 
@@ -503,6 +509,18 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   useEffect(() => {
     if (mock) return;
 
+    const loadReadNotificationIds = () => {
+      try {
+        return new Set<number>(
+          JSON.parse(
+            window.localStorage.getItem(CHEER_NOTIFICATION_READ_KEY) ?? "[]"
+          )
+        );
+      } catch {
+        return new Set<number>();
+      }
+    };
+
     const loadSeenIds = () => {
       try {
         return new Set<number>(
@@ -523,10 +541,17 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
     };
 
     const pollNotifications = async () => {
-      if (!notificationStorage.isFriendAlertOn()) return;
-
       try {
         const notifications = await getFeedNotifications();
+        const readIds = loadReadNotificationIds();
+        setFriendCheerCount(
+          notifications.filter(
+            (item) => !item.read_at && !readIds.has(item.id)
+          ).length
+        );
+
+        if (!notificationStorage.isFriendAlertOn()) return;
+
         const seenIds = loadSeenIds();
         const unseen = notifications.filter((item) => !seenIds.has(item.id));
 
@@ -687,6 +712,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
     selectFeedIndex((normalizedActiveFeedIndex + 1) % groupedFeedItems.length);
   };
 
+  const friendAlertCount = friendRequestCount + friendCheerCount;
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const activeChallengeCount = myActiveChallenges.length;
   const completedTodayCount = myActiveChallenges.filter((challenge) =>
@@ -1196,14 +1222,21 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 <button
                   type="button"
                   onClick={() => setFriendRequestOpen(true)}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[#dce9e0] bg-white text-[#2E7D5B] transition hover:bg-[#f4fbf6]"
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                    friendAlertCount > 0
+                      ? "border-[#2E7D5B]/35 bg-[#ecf9f1] text-[#1f7a46] shadow-[0_0_0_4px_rgba(46,125,91,0.08),0_10px_24px_rgba(46,125,91,0.14)]"
+                      : "border-[#dce9e0] bg-white text-[#2E7D5B] hover:bg-[#f4fbf6]"
+                  }`}
                   aria-label="받은 친구 요청 확인"
                 >
                   <Bell size={16} />
-                  {friendRequestCount > 0 && (
+                  {friendAlertCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {friendRequestCount}
+                      {friendAlertCount}
                     </span>
+                  )}
+                  {friendAlertCount > 0 && (
+                    <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#2E7D5B]" />
                   )}
                 </button>
 
@@ -1479,6 +1512,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
         open={friendRequestOpen}
         onClose={() => setFriendRequestOpen(false)}
         onChanged={setFriendRequestCount}
+        onCheerChanged={setFriendCheerCount}
       />
       <FriendActivityModal
         open={friendActivityOpen}
