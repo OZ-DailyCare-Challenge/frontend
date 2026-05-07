@@ -12,7 +12,7 @@ import { getHealthRecords } from "@/src/api/health";
 import { getAnalysisHistory } from "@/src/api/analysis";
 import { storage } from "@/src/utils/storage";
 import { useChallengeStore } from "@/src/store/challenge-store";
-import { getMyActiveChallenges } from "@/src/api/challenge";
+import { getChallengesWithFallback } from "@/src/api/challenge";
 
 type HealthRecord = {
   id?: number;
@@ -45,6 +45,11 @@ type ChallengeLike = {
   status?: string;
   logs?: Array<boolean | null>;
   lastSubmittedDate?: string | null;
+  completionWindow?: number;
+  requiredSuccessDays?: number;
+  required_success_days?: number;
+  completedAt?: string | null;
+  completed_at?: string | null;
 };
 
 type UserLike = {
@@ -89,15 +94,6 @@ const formatRecordDate = (value?: string) => {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 };
 
-const toCalendarKey = (value?: string) => {
-  if (!value) return null;
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-};
-
 const toDateKey = (date: Date) => {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 };
@@ -137,18 +133,77 @@ const buildWeeklyChallenge = (challenges: ChallengeLike[]) => {
   });
 };
 
+const getChallengeSuccessCount = (challenge: ChallengeLike) => {
+  return (challenge.logs ?? []).filter((log) => log === true).length;
+};
+
+const getChallengeCompletionTarget = (challenge: ChallengeLike) => {
+  const target =
+    challenge.completionWindow ??
+    challenge.requiredSuccessDays ??
+    challenge.required_success_days;
+
+  return typeof target === "number" && target > 0 ? target : null;
+};
+
+const isChallengeBadgeEarned = (challenge: ChallengeLike) => {
+  const normalizedStatus = challenge.status?.toLowerCase();
+  if (
+    normalizedStatus === "done" ||
+    normalizedStatus === "completed" ||
+    normalizedStatus === "complete"
+  ) {
+    return true;
+  }
+
+  const completionTarget = getChallengeCompletionTarget(challenge);
+  return completionTarget !== null && getChallengeSuccessCount(challenge) >= completionTarget;
+};
+
+const getChallengeCompletionDate = (challenge: ChallengeLike) => {
+  const explicitDate = challenge.completedAt ?? challenge.completed_at;
+  if (explicitDate && !Number.isNaN(new Date(explicitDate).getTime())) {
+    return toDateKey(new Date(explicitDate));
+  }
+
+  const logs = challenge.logs ?? [];
+  const lastSubmittedDate = challenge.lastSubmittedDate;
+  const completionTarget = getChallengeCompletionTarget(challenge);
+
+  if (!lastSubmittedDate || completionTarget === null) return null;
+
+  const lastDate = new Date(lastSubmittedDate);
+  if (Number.isNaN(lastDate.getTime())) return null;
+
+  const lastFilledIndex = logs.reduce(
+    (latestIndex, log, index) => (log !== null ? index : latestIndex),
+    -1
+  );
+
+  if (lastFilledIndex === -1) return null;
+
+  let successCount = 0;
+  for (let index = 0; index < logs.length; index += 1) {
+    if (logs[index] !== true) continue;
+
+    successCount += 1;
+    if (successCount === completionTarget) {
+      return toDateKey(addDays(lastDate, index - lastFilledIndex));
+    }
+  }
+
+  return null;
+};
+
 const buildBadgesFromChallenges = (challenges: ChallengeLike[]) => {
   return challenges.map((challenge) => {
-    const successCount = (challenge.logs ?? []).filter((log) => log === true).length;
-    const earned =
-      successCount > 0 ||
-      challenge.status === "done" ||
-      (challenge.currentStreak ?? 0) > 0;
+    const earned = isChallengeBadgeEarned(challenge);
 
     return {
       name: challenge.title || "챌린지",
       icon: earned ? "🏅" : "🔒",
       earned,
+      earnedDate: earned ? getChallengeCompletionDate(challenge) ?? undefined : undefined,
     };
   });
 };
@@ -283,50 +338,9 @@ const getIntegratedStreakDays = (challenges: ChallengeLike[]) => {
   return streak;
 };
 
-const buildBadgeCalendar = (
-  healthRecords: HealthRecord[],
-  challenges: ChallengeLike[]
-): GrowthBadgeSticker[] => {
-  const sortedRecords = [...healthRecords].sort((a, b) => {
-    const aTime = new Date(a.created_at ?? a.recorded_at ?? 0).getTime();
-    const bTime = new Date(b.created_at ?? b.recorded_at ?? 0).getTime();
-    return aTime - bTime;
-  });
-
+const buildBadgeCalendar = (challenges: ChallengeLike[]): GrowthBadgeSticker[] => {
   const stickers: GrowthBadgeSticker[] = [];
   const challengeSuccessDates = getChallengeSuccessDates(challenges);
-
-  sortedRecords.forEach((record, index) => {
-    const key = toCalendarKey(record.created_at ?? record.recorded_at);
-    if (!key) return;
-
-    const badges: { name: string; icon: string }[] = [];
-
-    if (index === 0) badges.push({ name: "첫 기록", icon: "🌱" });
-    if (record.exercise_yn === true) badges.push({ name: "운동 기록", icon: "💪" });
-    if (record.smoke_yn === false) badges.push({ name: "금연 유지", icon: "🚭" });
-    if (record.alcohol_yn === false) badges.push({ name: "절주 실천", icon: "💧" });
-
-    if (
-      typeof record.systolic_bp === "number" &&
-      typeof record.diastolic_bp === "number" &&
-      record.systolic_bp < 120 &&
-      record.diastolic_bp < 80
-    ) {
-      badges.push({ name: "혈압 안정", icon: "🫀" });
-    }
-
-    if (typeof record.glucose === "number" && record.glucose < 100) {
-      badges.push({ name: "혈당 안정", icon: "✨" });
-    }
-
-    if (badges.length === 0) return;
-
-    stickers.push({
-      date: key,
-      badges,
-    });
-  });
 
   challenges.forEach((challenge) => {
     const logs = challenge.logs ?? [];
@@ -348,22 +362,46 @@ const buildBadgeCalendar = (
 
       const date = addDays(lastDate, index - lastFilledIndex);
       const key = toDateKey(date);
-
-      const badge = {
-        name: challenge.title || "챌린지 실천",
+      const sticker = {
+        name: challenge.title || "챌린지 인증",
         icon: getChallengeStickerIcon(challenge.title),
+        kind: "sticker" as const,
       };
 
       const existing = stickers.find((item) => item.date === key);
       if (existing) {
-        existing.badges.push(badge);
+        existing.badges.push(sticker);
         return;
       }
 
       stickers.push({
         date: key,
-        badges: [badge],
+        badges: [sticker],
       });
+    });
+  });
+
+  challenges.forEach((challenge) => {
+    if (!isChallengeBadgeEarned(challenge)) return;
+
+    const key = getChallengeCompletionDate(challenge);
+    if (!key) return;
+
+    const badge = {
+      name: challenge.title || "챌린지 완료",
+      icon: "🏅",
+      kind: "badge" as const,
+    };
+
+    const existing = stickers.find((item) => item.date === key);
+    if (existing) {
+      existing.badges.push(badge);
+      return;
+    }
+
+    stickers.push({
+      date: key,
+      badges: [badge],
     });
   });
 
@@ -504,7 +542,7 @@ const buildViewData = (
 
   const badges = buildBadgesFromChallenges(challenges);
   const earnedBadgeCount = badges.filter((badge) => badge.earned).length;
-  const badgeCalendar = buildBadgeCalendar(sortedRecords, challenges);
+  const badgeCalendar = buildBadgeCalendar(challenges);
   const weeklyChallenge = buildWeeklyChallenge(challenges);
   const challengeItems = buildChallengeSummaries(challenges);
 
@@ -530,7 +568,6 @@ const buildViewData = (
 export default function GrowthPage() {
   const router = useRouter();
   const hydrated = useChallengeStore((state) => state.hydrated);
-  const healthRecordsRef = useRef<HealthRecord[]>([]);
   const usingApiChallengesRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
@@ -548,28 +585,41 @@ export default function GrowthPage() {
 
         const storedUser = storage.getUser?.();
 
-        const [dashboardRes, healthRes, analysisRes, myActiveRes] = await Promise.all([
+        const [dashboardRes, healthRes, analysisRes, challengeRes] = await Promise.all([
           getDashboard().catch(() => null),
           getHealthRecords().catch(() => []),
           getAnalysisHistory().catch(() => ({ items: [] })),
-          getMyActiveChallenges().catch(() => ({ challenges: [] })),
+          getChallengesWithFallback().catch(() => ({ challenges: [], isFallback: true })),
         ]);
 
-        // API 활성 챌린지를 ChallengeLike로 변환, 없으면 Zustand 스토어 폴백
-        const apiChallenges: ChallengeLike[] = (myActiveRes.challenges ?? []).map((c) => ({
-          id: c.challenge_id,
-          title: c.title,
-          currentStreak: c.current_streak,
-          status: "in_progress",
-          logs: [],
-        }));
-        usingApiChallengesRef.current = apiChallenges.length > 0;
-        const challenges: ChallengeLike[] = usingApiChallengesRef.current
-          ? apiChallenges
-          : (useChallengeStore.getState().challenges ?? []) as ChallengeLike[];
+        const storedChallenges =
+          (useChallengeStore.getState().challenges ?? []) as ChallengeLike[];
+        const storedChallengeMap = new Map(
+          storedChallenges.map((challenge) => [String(challenge.id), challenge])
+        );
+        const apiChallenges: ChallengeLike[] = (challengeRes.challenges ?? []).map((c) => {
+          const storedChallenge = storedChallengeMap.get(String(c.id));
+
+          return {
+            id: c.id,
+            title: c.title,
+            description: c.description,
+            currentStreak:
+              c.user_challenge?.current_streak ?? storedChallenge?.currentStreak,
+            status: c.user_challenge?.status ?? storedChallenge?.status,
+            logs: storedChallenge?.logs ?? c.user_challenge?.logs ?? [],
+            lastSubmittedDate: storedChallenge?.lastSubmittedDate ?? null,
+            completionWindow: c.required_success_days,
+            required_success_days: c.required_success_days,
+            completed_at: c.user_challenge?.completed_at ?? null,
+          };
+        });
+        usingApiChallengesRef.current =
+          apiChallenges.length > 0 && challengeRes.isFallback !== true;
+        const challenges: ChallengeLike[] =
+          apiChallenges.length > 0 ? apiChallenges : storedChallenges;
 
         const records = extractArray(healthRes);
-        healthRecordsRef.current = records;
         if (records.length === 0) {
           router.replace("/input");
           return;
@@ -615,10 +665,7 @@ export default function GrowthPage() {
           weeklyChallenge: buildWeeklyChallenge(challenges),
           challengeItems: buildChallengeSummaries(challenges),
           badges,
-          badgeCalendar: buildBadgeCalendar(
-            healthRecordsRef.current,
-            challenges
-          ),
+          badgeCalendar: buildBadgeCalendar(challenges),
           badgeCount: earnedBadgeCount,
           earnedBadgeCount,
         };
