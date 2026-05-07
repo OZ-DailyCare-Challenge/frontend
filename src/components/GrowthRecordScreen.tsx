@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,7 @@ import {
   Star,
 } from "lucide-react";
 import ProfileNameAvatar from "@/src/components/ProfileNameAvatar";
+import { sessionPoints } from "@/src/utils/sessionPoints";
 
 export type GrowthCardioPoint = {
   label: string;
@@ -198,9 +199,19 @@ export default function GrowthRecordScreen({ data }: Props) {
   const router = useRouter();
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [weeklyChallengeIndex, setWeeklyChallengeIndex] = useState(0);
+  const [displayPoint, setDisplayPoint] = useState(() =>
+    sessionPoints.initialize(data.point ?? 0)
+  );
   const hasCardioAgeHistory = data.cardioAgeHistory.length > 0;
   const hasBadges = data.badges.length > 0;
   const hasHealthHistory = data.healthHistory.length > 0;
+
+  useEffect(() => {
+    sessionPoints.initialize(data.point ?? 0);
+    const handlePointChange = () => setDisplayPoint(sessionPoints.get());
+    window.addEventListener("session-points-change", handlePointChange);
+    return () => window.removeEventListener("session-points-change", handlePointChange);
+  }, [data.point]);
 
   const currentCardioAge = hasCardioAgeHistory
     ? data.cardioAgeHistory[data.cardioAgeHistory.length - 1]?.value ?? null
@@ -354,7 +365,7 @@ export default function GrowthRecordScreen({ data }: Props) {
             icon={<Star size={30} fill="currentColor" />}
             tone="yellow"
             label="포인트"
-            value={`${data.point ?? 0}`}
+            value={`${displayPoint.toLocaleString("ko-KR")}`}
             sub="이번 주 +30"
           />
           <StatTile

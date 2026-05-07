@@ -13,6 +13,7 @@ import { storage } from "@/src/utils/storage";
 import { perfMark, perfMeasure } from "@/src/utils/perf";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import { getTodayChecklistFromChallenges } from "@/src/lib/challenge-utils";
+import type { Challenge } from "@/src/lib/challenge-data";
 
 type HealthRecordLike = {
   id?: number;
@@ -35,16 +36,66 @@ type AnalysisHistoryLike = {
   created_at?: string;
 };
 
-type ChallengeLike = {
-  id: number | string;
-  currentStreak?: number;
+type DashboardResponseLike = {
+  age?: unknown;
+  birth_year?: unknown;
+  birthYear?: unknown;
+  profile?: {
+    birth_year?: unknown;
+  };
+  health_score?: unknown;
+  today_health_score?: unknown;
+  score?: unknown;
+  heart_age?: unknown;
+  vascular_age?: unknown;
+  cardio_age?: unknown;
+  current_point?: unknown;
+  point?: unknown;
+  points?: unknown;
+  nickname?: unknown;
+  user?: {
+    age?: unknown;
+    nickname?: unknown;
+  };
+  name?: unknown;
+  character_stage?: unknown;
+  next_update_days?: unknown;
 };
 
-const extractArray = (res: any) => {
+type StoredUserLike = {
+  age?: unknown;
+  birth_year?: unknown;
+  nickname?: unknown;
+  name?: unknown;
+};
+
+const normalizeAge = (value: unknown) => {
+  const age = Number(value);
+  return Number.isFinite(age) && age > 0 ? age : null;
+};
+
+const calculateAgeFromBirthYear = (value: unknown) => {
+  const birthYear = Number(value);
+  if (!Number.isFinite(birthYear) || birthYear <= 1900) return null;
+  return new Date().getFullYear() - birthYear + 1;
+};
+
+const asString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value : null;
+
+const extractArray = <T,>(res: unknown): T[] => {
   if (Array.isArray(res)) return res;
-  if (Array.isArray(res?.data)) return res.data;
-  if (Array.isArray(res?.items)) return res.items;
-  if (Array.isArray(res?.records)) return res.records;
+  if (!res || typeof res !== "object") return [];
+
+  const source = res as {
+    data?: unknown;
+    items?: unknown;
+    records?: unknown;
+  };
+
+  if (Array.isArray(source.data)) return source.data as T[];
+  if (Array.isArray(source.items)) return source.items as T[];
+  if (Array.isArray(source.records)) return source.records as T[];
   return [];
 };
 
@@ -95,7 +146,10 @@ const buildRiskTags = (
 };
 
 const getChallengeSummaryFromStore = () => {
-  const challenges = (useChallengeStore.getState().challenges ?? []) as any[];
+  const { challenges = [], streak = 0 } = useChallengeStore.getState() as {
+    challenges?: Challenge[];
+    streak?: number;
+  };
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const challengeProgress = todayChallenges.length
@@ -106,30 +160,25 @@ const getChallengeSummaryFromStore = () => {
       )
     : 0;
 
-  const streak = Math.max(
-    0,
-    ...challenges.map((challenge) => Number(challenge.currentStreak ?? 0))
-  );
-
   return { streak, challengeProgress };
 };
 
 const buildDashboardViewData = (
-  dashboard: any,
+  dashboard: DashboardResponseLike | null | undefined,
   latestRecord: HealthRecordLike | null,
   latestAnalysis: AnalysisHistoryLike | null,
-  storedUser: any = null
+  storedUser: StoredUserLike | null = null
 ): DashboardViewData => {
-  const currentYear = new Date().getFullYear();
-
-  const birthYear = Number(
-    dashboard?.birth_year ??
-      dashboard?.birthYear ??
-      dashboard?.profile?.birth_year
-  );
-
   const actualAge =
-    birthYear && birthYear > 1900 ? currentYear - birthYear : null;
+    normalizeAge(dashboard?.age) ??
+    normalizeAge(dashboard?.user?.age) ??
+    normalizeAge(storedUser?.age) ??
+    calculateAgeFromBirthYear(
+      dashboard?.birth_year ??
+        dashboard?.birthYear ??
+        dashboard?.profile?.birth_year ??
+        storedUser?.birth_year
+    );
 
   const healthScore = Number(
     dashboard?.health_score ?? dashboard?.today_health_score ?? dashboard?.score ?? 72
@@ -156,11 +205,11 @@ const buildDashboardViewData = (
   );
 
   const nickname =
-    dashboard?.nickname ??
-    dashboard?.user?.nickname ??
-    storedUser?.nickname ??
-    dashboard?.name ??
-    storedUser?.name ??
+    asString(dashboard?.nickname) ??
+    asString(dashboard?.user?.nickname) ??
+    asString(storedUser?.nickname) ??
+    asString(dashboard?.name) ??
+    asString(storedUser?.name) ??
     "버디";
 
   const characterStage = Number(dashboard?.character_stage ?? 1);
@@ -256,7 +305,7 @@ export default function DashboardPage() {
           }),
         ]);
 
-        const healthRecords = extractArray(healthRes);
+        const healthRecords = extractArray<HealthRecordLike>(healthRes);
         const latestRecord = healthRecords.length > 0 ? healthRecords[0] : null;
 
         if (!latestRecord) {

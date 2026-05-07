@@ -26,6 +26,45 @@ type NavItem = {
 };
 
 function getBottomItems(accessLevel: AccessLevel): NavItem[] {
+  const memberItems: NavItem[] = [
+    {
+      key: "dashboard",
+      href: "/dashboard",
+      label: "대시",
+      icon: <LayoutDashboard size={18} strokeWidth={2.2} />,
+    },
+    {
+      key: "analysis",
+      href: "/result",
+      label: "분석",
+      icon: <HeartPulse size={18} strokeWidth={2.2} />,
+    },
+    {
+      key: "challenge",
+      href: "/challenge",
+      label: "챌린지",
+      icon: <Trophy size={18} strokeWidth={2.2} />,
+    },
+    {
+      key: "diet",
+      href: "/diet-analysis",
+      label: "식단",
+      icon: <Utensils size={18} strokeWidth={2.2} />,
+    },
+    {
+      key: "growth",
+      href: "/growth",
+      label: "성장",
+      icon: <ChartNoAxesColumn size={18} strokeWidth={2.2} />,
+    },
+    {
+      key: "mypage",
+      href: "/mypage",
+      label: "마이",
+      icon: <User size={18} strokeWidth={2.2} />,
+    },
+  ];
+
   switch (accessLevel) {
     case "guest":
       return [
@@ -45,60 +84,8 @@ function getBottomItems(accessLevel: AccessLevel): NavItem[] {
       ];
 
     case "member_profile_only":
-      return [
-        {
-          key: "analysis",
-          href: "/input",
-          label: "분석",
-          icon: <HeartPulse size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "mypage",
-          href: "/mypage",
-          label: "마이",
-          icon: <User size={18} strokeWidth={2.2} />,
-        },
-      ];
-
     case "member_done":
-      return [
-        {
-          key: "dashboard",
-          href: "/dashboard",
-          label: "대시",
-          icon: <LayoutDashboard size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "analysis",
-          href: "/result",
-          label: "분석",
-          icon: <HeartPulse size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "challenge",
-          href: "/challenge",
-          label: "챌린지",
-          icon: <Trophy size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "diet",
-          href: "/diet-analysis",
-          label: "식단",
-          icon: <Utensils size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "growth",
-          href: "/growth",
-          label: "성장",
-          icon: <ChartNoAxesColumn size={18} strokeWidth={2.2} />,
-        },
-        {
-          key: "mypage",
-          href: "/mypage",
-          label: "마이",
-          icon: <User size={18} strokeWidth={2.2} />,
-        },
-      ];
+      return memberItems;
   }
 }
 

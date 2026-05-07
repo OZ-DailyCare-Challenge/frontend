@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -47,6 +47,45 @@ function getSidebarMessageByHour(hour: number) {
 }
 
 function getNavItems(accessLevel: AccessLevel): NavItem[] {
+  const memberItems: NavItem[] = [
+    {
+      key: "dashboard",
+      href: "/dashboard",
+      label: "대시보드",
+      icon: <LayoutDashboard size={20} strokeWidth={2.1} />,
+    },
+    {
+      key: "analysis",
+      href: "/result",
+      label: "AI 건강 분석",
+      icon: <HeartPulse size={20} strokeWidth={2.1} />,
+    },
+    {
+      key: "challenge",
+      href: "/challenge",
+      label: "챌린지",
+      icon: <Trophy size={20} strokeWidth={2.1} />,
+    },
+    {
+      key: "diet",
+      href: "/diet-analysis",
+      label: "식단 분석",
+      icon: <Utensils size={20} strokeWidth={2.1} />,
+    },
+    {
+      key: "growth",
+      href: "/growth",
+      label: "성장 기록",
+      icon: <ChartNoAxesColumn size={20} strokeWidth={2.1} />,
+    },
+    {
+      key: "mypage",
+      href: "/mypage",
+      label: "마이페이지",
+      icon: <User size={20} strokeWidth={2.1} />,
+    },
+  ];
+
   switch (accessLevel) {
     case "guest":
       return [
@@ -66,60 +105,8 @@ function getNavItems(accessLevel: AccessLevel): NavItem[] {
       ];
 
     case "member_profile_only":
-      return [
-        {
-          key: "analysis",
-          href: "/input",
-          label: "AI 건강 분석",
-          icon: <HeartPulse size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "mypage",
-          href: "/mypage",
-          label: "마이페이지",
-          icon: <User size={20} strokeWidth={2.1} />,
-        },
-      ];
-
     case "member_done":
-      return [
-        {
-          key: "dashboard",
-          href: "/dashboard",
-          label: "대시보드",
-          icon: <LayoutDashboard size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "analysis",
-          href: "/result",
-          label: "AI 건강 분석",
-          icon: <HeartPulse size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "challenge",
-          href: "/challenge",
-          label: "챌린지",
-          icon: <Trophy size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "diet",
-          href: "/diet-analysis",
-          label: "식단 분석",
-          icon: <Utensils size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "growth",
-          href: "/growth",
-          label: "성장 기록",
-          icon: <ChartNoAxesColumn size={20} strokeWidth={2.1} />,
-        },
-        {
-          key: "mypage",
-          href: "/mypage",
-          label: "마이페이지",
-          icon: <User size={20} strokeWidth={2.1} />,
-        },
-      ];
+      return memberItems;
   }
 }
 
@@ -187,12 +174,10 @@ export default function Sidebar({ onRequireLogin }: SidebarProps) {
   const displayName = useAccessStore((state) => state.displayName);
   const profileImage = useAccessStore((state) => state.profileImage);
 
-  const [sidebarMessage, setSidebarMessage] = useState("작은 것부터 시작해요");
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    setSidebarMessage(getSidebarMessageByHour(hour));
-  }, []);
+  const sidebarMessage = useMemo(
+    () => getSidebarMessageByHour(new Date().getHours()),
+    []
+  );
 
   const navItems = useMemo(() => {
     if (!hydrated) return [];

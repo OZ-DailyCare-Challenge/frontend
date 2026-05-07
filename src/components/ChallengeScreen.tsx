@@ -31,6 +31,7 @@ import {
   waitExerciseVerificationCompletion,
 } from "@/src/api/exercise";
 import { storage } from "@/src/utils/storage";
+import { sessionPoints } from "@/src/utils/sessionPoints";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import type {
   Challenge as StoredChallenge,
@@ -60,45 +61,8 @@ type ChallengeLogPayload =
       cv_result_id?: number;
     };
 
-function getNestedValue(source: unknown, path: string[]) {
-  return path.reduce<unknown>((current, key) => {
-    if (!current || typeof current !== "object") return undefined;
-    return (current as Record<string, unknown>)[key];
-  }, source);
-}
-
-function normalizeCvResultId(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue)) return numericValue;
-  }
-
-  return undefined;
-}
-
-function extractCvResultId(verifyResult: unknown): number | undefined {
-  const candidates = [
-    getNestedValue(verifyResult, ["cv_result_id"]),
-    getNestedValue(verifyResult, ["result_id"]),
-    getNestedValue(verifyResult, ["id"]),
-    getNestedValue(verifyResult, ["data", "cv_result_id"]),
-    getNestedValue(verifyResult, ["data", "result_id"]),
-    getNestedValue(verifyResult, ["data", "id"]),
-    getNestedValue(verifyResult, ["result", "cv_result_id"]),
-    getNestedValue(verifyResult, ["result", "result_id"]),
-    getNestedValue(verifyResult, ["result", "id"]),
-    getNestedValue(verifyResult, ["result", "data", "cv_result_id"]),
-    getNestedValue(verifyResult, ["result", "data", "result_id"]),
-    getNestedValue(verifyResult, ["result", "data", "id"]),
-  ];
-
-  for (const candidate of candidates) {
-    const id = normalizeCvResultId(candidate);
-    if (id !== undefined) return id;
-  }
-
-  return undefined;
+function getChallengeRewardPoint(challenge: ChallengeItem) {
+  return challenge.verification === "photo" ? 100 : 20;
 }
 
 type ChallengeItem = {
@@ -431,6 +395,9 @@ export default function ChallengeScreen() {
   const [ragRecommendations, setRagRecommendations] = useState<RecommendItem[]>(
     []
   );
+  const [sessionPointBalance, setSessionPointBalance] = useState(() =>
+    sessionPoints.initialize(storage.getUser()?.current_point ?? 0)
+  );
   const [aiMissions, setAiMissions] = useState<Mission[]>([]);
   const [photoSubmitting, setPhotoSubmitting] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -530,6 +497,24 @@ export default function ChallengeScreen() {
       0
     );
   }, [baseChallenges]);
+
+  const rewardSummary = useMemo(() => {
+    const events = sessionPoints.getEvents();
+    return {
+      points: sessionPointBalance,
+      successCount: events.filter(
+        (event) =>
+          event.reason === "challenge_check" || event.reason === "challenge_photo"
+      ).length,
+    };
+  }, [sessionPointBalance]);
+
+  useEffect(() => {
+    const handlePointChange = () => setSessionPointBalance(sessionPoints.get());
+    window.addEventListener("session-points-change", handlePointChange);
+    return () =>
+      window.removeEventListener("session-points-change", handlePointChange);
+  }, []);
 
   const counts = useMemo(
     () => getMergedChallengeCounts(mergedChallenges),
@@ -851,16 +836,15 @@ export default function ChallengeScreen() {
     challenge: ChallengeItem,
     inputValue?: string,
     cvResultId?: number,
-    forceInputMode?: boolean
+    forceVerificationType?: "input" | "checklist"
   ) => {
     if (typeof challenge.userChallengeId !== "number") {
       alert("먼저 챌린지를 시작해주세요.");
       return;
     }
 
-    const verificationType = forceInputMode
-      ? "input"
-      : mapVerificationTypeToApi(challenge.verification);
+    const verificationType =
+      forceVerificationType ?? mapVerificationTypeToApi(challenge.verification);
 
     let payload: ChallengeLogPayload;
 
@@ -901,11 +885,17 @@ export default function ChallengeScreen() {
     persistChallengeItemToStorage(updatedChallenge);
     removeCurrentChallengeCache();
     triggerCardPulse(challenge.id);
+    const earnedPoint = getChallengeRewardPoint(challenge);
+    sessionPoints.add(
+      earnedPoint,
+      challenge.verification === "photo" ? "challenge_photo" : "challenge_check",
+      `${challenge.title} 인증 성공`
+    );
     triggerCelebration({
       challenge,
       streak: logResult.current_streak,
       completed: logResult.is_completed,
-      point: challenge.verification === "photo" ? 100 : 20,
+      point: earnedPoint,
     });
   };
 
@@ -938,7 +928,7 @@ export default function ChallengeScreen() {
         selectedChallenge,
         numberInput.trim(),
         undefined,
-        true
+        "input"
       );
 
       setNumberInput("");
@@ -965,12 +955,11 @@ export default function ChallengeScreen() {
 
       console.log("exercise verify result:", verifyResult);
 
-      const resolvedCvResultId = extractCvResultId(verifyResult);
-
       await submitChallengeLog(
         selectedChallenge,
         undefined,
-        resolvedCvResultId
+        undefined,
+        "checklist"
       );
 
       setPhotoUploaded(true);
@@ -1122,13 +1111,15 @@ export default function ChallengeScreen() {
           </div>
 
           <div className="rounded-[18px] bg-[#fbfdfb] px-5 py-5">
-            <p className="text-sm font-black text-[#163126]">이번 달 보상</p>
+            <p className="text-sm font-black text-[#163126]">실천 보상</p>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-[18px] bg-white px-4 py-4 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#fff4cf] text-[#f4b000]">
                   <Trophy size={24} fill="currentColor" />
                 </div>
-                <p className="mt-3 text-2xl font-black text-[#163126]">20</p>
+                <p className="mt-3 text-2xl font-black text-[#163126]">
+                  {rewardSummary.points.toLocaleString("ko-KR")}
+                </p>
                 <p className="text-xs font-bold text-[#163126]/45">포인트</p>
               </div>
               <div className="rounded-[18px] bg-white px-4 py-4 text-center">
@@ -1136,7 +1127,7 @@ export default function ChallengeScreen() {
                   <CheckCircle2 size={24} />
                 </div>
                 <p className="mt-3 text-2xl font-black text-[#163126]">
-                  {counts.done}개
+                  {rewardSummary.successCount.toLocaleString("ko-KR")}개
                 </p>
                 <p className="text-xs font-bold text-[#163126]/45">성공</p>
               </div>
@@ -1967,22 +1958,26 @@ function ExerciseVerifyModal({
 
   useEffect(() => {
     if (!open) {
-      setFile(null);
-      setPreviewUrl("");
-      setLocalError("");
+      const timer = window.setTimeout(() => {
+        setFile(null);
+        setPreviewUrl("");
+        setLocalError("");
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [open]);
 
   useEffect(() => {
     if (!file) {
-      setPreviewUrl("");
-      return;
+      const timer = window.setTimeout(() => setPreviewUrl(""), 0);
+      return () => window.clearTimeout(timer);
     }
 
     const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+    const timer = window.setTimeout(() => setPreviewUrl(objectUrl), 0);
 
     return () => {
+      window.clearTimeout(timer);
       URL.revokeObjectURL(objectUrl);
     };
   }, [file]);
