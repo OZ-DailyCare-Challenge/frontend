@@ -57,6 +57,7 @@ export type GrowthBadgeSticker = {
   badges: {
     name: string;
     icon: string;
+    kind?: "sticker" | "badge";
   }[];
 };
 
@@ -375,7 +376,7 @@ export default function GrowthRecordScreen({ data }: Props) {
             value={
               typeof data.badgeCount === "number" ? `${data.badgeCount}개` : "-"
             }
-            sub="획득 뱃지 보기"
+            sub="챌린지 완료 보상"
           />
         </div>
       </section>
@@ -640,7 +641,8 @@ export default function GrowthRecordScreen({ data }: Props) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-black text-[#163126]/62 sm:text-sm">
-            <LegendDot icon="✓" className="bg-[#59c76a] text-white" text="당일 인증" />
+            <LegendDot icon="✓" className="bg-[#59c76a] text-white" text="일일 스티커" />
+            <LegendDot icon="🏅" className="bg-[#f3d36b] text-[#7a4b00]" text="완료 뱃지" />
             {hasCurrentStreak && (
               <LegendDot
                 icon="🔥"
@@ -673,7 +675,9 @@ export default function GrowthRecordScreen({ data }: Props) {
 
           {monthCalendar.cells.map((cell) => {
             const calendarItem = cell.fullDate ? badgeMap.get(cell.fullDate) : null;
-            const stickers = calendarItem?.badges ?? [];
+            const stickers = [...(calendarItem?.badges ?? [])].sort((a, b) =>
+              a.kind === b.kind ? 0 : a.kind === "badge" ? -1 : 1
+            );
             const visibleStickers = stickers.slice(0, 4);
 
             return (
@@ -717,8 +721,16 @@ export default function GrowthRecordScreen({ data }: Props) {
                             <button
                               type="button"
                               key={`${cell.fullDate}-${sticker.name}-${stickerIndex}`}
-                              aria-label={`${sticker.name} 챌린지 인증`}
-                              className="group relative flex h-7 w-7 items-center justify-center rounded-full bg-[#59c76a] text-sm font-black text-white shadow-[0_4px_10px_rgba(46,125,91,0.10)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-110 hover:shadow-[0_8px_18px_rgba(46,125,91,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E9C45]/35"
+                              aria-label={`${sticker.name} ${
+                                sticker.kind === "badge"
+                                  ? "챌린지 완료 뱃지"
+                                  : "일일 챌린지 스티커"
+                              }`}
+                              className={`group relative flex h-7 w-7 items-center justify-center rounded-full text-sm font-black shadow-[0_4px_10px_rgba(46,125,91,0.10)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-110 hover:shadow-[0_8px_18px_rgba(46,125,91,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E9C45]/35 ${
+                                sticker.kind === "badge"
+                                  ? "bg-[#f3d36b] text-[#7a4b00] ring-2 ring-[#fff3bf]"
+                                  : "bg-[#59c76a] text-white"
+                              }`}
                             >
                               {sticker.icon || "✓"}
                               <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 max-w-[150px] -translate-x-1/2 whitespace-nowrap rounded-full bg-[#163126] px-3 py-1.5 text-[11px] font-black text-white opacity-0 shadow-[0_10px_24px_rgba(22,49,38,0.18)] transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -746,7 +758,7 @@ export default function GrowthRecordScreen({ data }: Props) {
         </div>
 
         <p className="mt-3 text-right text-xs font-semibold text-[#163126]/45">
-          {visibleStickerCount}개 기록 표시 중
+          {visibleStickerCount}개 스티커/뱃지 표시 중
         </p>
       </section>
 
@@ -827,14 +839,14 @@ export default function GrowthRecordScreen({ data }: Props) {
                     {badge.name}
                   </p>
                   <p className="mt-1 text-xs font-semibold text-[#163126]/45">
-                    {badge.earned ? "획득 완료" : "도전 중"}
+                    {badge.earned ? "획득 완료" : "목표 달성 시 획득"}
                   </p>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyStateBox text="아직 획득한 뱃지가 없어요." />
+          <EmptyStateBox text="완료한 챌린지가 생기면 뱃지가 표시돼요." />
         )}
 
         <div className="mt-5 flex items-center justify-end gap-4">

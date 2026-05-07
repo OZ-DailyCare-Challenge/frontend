@@ -32,6 +32,7 @@ import {
 } from "@/src/api/exercise";
 import { storage } from "@/src/utils/storage";
 import { sessionPoints } from "@/src/utils/sessionPoints";
+import { todayChallengeProgress } from "@/src/utils/todayChallengeProgress";
 import { useChallengeStore } from "@/src/store/challenge-store";
 import type {
   Challenge as StoredChallenge,
@@ -134,6 +135,30 @@ function setStoredActiveChallengeMap(map: StoredActiveChallengeMap) {
   sessionStorage.setItem(ACTIVE_CHALLENGES_STORAGE_KEY, JSON.stringify(map));
 }
 
+function buildMyChallengeMap(
+  challenges: Awaited<ReturnType<typeof getMyActiveChallenges>>["challenges"]
+): StoredActiveChallengeMap {
+  return challenges.reduce<StoredActiveChallengeMap>((map, challenge) => {
+    map[challenge.challenge_id] = {
+      userChallengeId: challenge.user_challenge_id,
+      currentStreak: challenge.current_streak,
+      status: "in_progress",
+      logs: [],
+      lastSubmittedDate: null,
+    };
+
+    return map;
+  }, {});
+}
+
+function isChallengeOwnershipError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message.includes("403") ||
+      error.message.includes("본인의 챌린지가 아닙니다"))
+  );
+}
+
 function mapVerificationType(value: string): VerificationType {
   const normalized = value.trim().toLowerCase();
 
@@ -167,50 +192,24 @@ function mapVerificationTypeToApi(
   return "cv";
 }
 
-function mapApiStatusToUiStatus(
-  status?: string | null
-): ChallengeStatus | null {
-  if (!status) return null;
-
-  const normalized = status.toLowerCase();
-
-  if (normalized === "active" || normalized === "in_progress") {
-    return "in_progress";
-  }
-
-  if (normalized === "completed" || normalized === "done") {
-    return "done";
-  }
-
-  if (normalized === "abandoned" || normalized === "locked") {
-    return "locked";
-  }
-
-  return null;
-}
-
 function mapApiChallengeToUi(
   challenge: ApiChallenge,
-  activeMap: StoredActiveChallengeMap
+  myChallengeMap: StoredActiveChallengeMap
 ): ChallengeItem {
-  const active = activeMap[challenge.id];
+  const myChallenge = myChallengeMap[challenge.id];
   const durationDays = Number(challenge.duration_days) || 7;
   const completionWindow = Number(challenge.required_success_days) || 5;
 
-  const apiUserChallenge = challenge.user_challenge ?? null;
-  const apiStatus = mapApiStatusToUiStatus(apiUserChallenge?.status);
-
   const logs =
-    active?.logs && active.logs.length === durationDays
-      ? active.logs
+    myChallenge?.logs && myChallenge.logs.length === durationDays
+      ? myChallenge.logs
       : Array(durationDays).fill(null);
 
   const successCount = logs.filter((v) => v === true).length;
 
   const resolvedStatus: ChallengeStatus =
-    apiStatus ??
-    active?.status ??
-    (successCount >= completionWindow ? "done" : "locked");
+    myChallenge?.status ??
+    (successCount >= completionWindow && myChallenge ? "done" : "locked");
 
   const firstEmptyIndex = logs.findIndex((log) => log === null);
   const currentDay =
@@ -232,10 +231,9 @@ function mapApiChallengeToUi(
     currentDay,
     status: resolvedStatus,
     logs,
-    lastSubmittedDate: active?.lastSubmittedDate ?? null,
-    userChallengeId: apiUserChallenge?.id ?? active?.userChallengeId,
-    currentStreak:
-      apiUserChallenge?.current_streak ?? active?.currentStreak ?? 0,
+    lastSubmittedDate: myChallenge?.lastSubmittedDate ?? null,
+    userChallengeId: myChallenge?.userChallengeId,
+    currentStreak: myChallenge?.currentStreak ?? 0,
     source: "base",
     aiRecommended: false,
   };
@@ -442,25 +440,14 @@ export default function ChallengeScreen() {
         if (challengeResponse.status === "fulfilled") {
           setUsingFallbackChallenges(challengeResponse.value.isFallback);
 
-          // API에서 가져온 활성 챌린지로 activeMap 구성 (sessionStorage 우선, API로 보완)
-          const storedMap = getStoredActiveChallengeMap();
-          if (myActiveResponse.status === "fulfilled") {
-            myActiveResponse.value.challenges.forEach((ac) => {
-              if (!storedMap[ac.challenge_id]) {
-                storedMap[ac.challenge_id] = {
-                  userChallengeId: ac.user_challenge_id,
-                  currentStreak: ac.current_streak,
-                  status: "in_progress",
-                  logs: [],
-                  lastSubmittedDate: null,
-                };
-              }
-            });
-            setStoredActiveChallengeMap(storedMap);
-          }
+          const myChallengeMap =
+            myActiveResponse.status === "fulfilled"
+              ? buildMyChallengeMap(myActiveResponse.value.challenges)
+              : {};
+          setStoredActiveChallengeMap(myChallengeMap);
 
           const mapped = (challengeResponse.value.challenges ?? []).map(
-            (challenge) => mapApiChallengeToUi(challenge, storedMap)
+            (challenge) => mapApiChallengeToUi(challenge, myChallengeMap)
           );
           setBaseChallenges(mapped);
           syncChallengeStore(mapped);
@@ -660,12 +647,17 @@ export default function ChallengeScreen() {
   };
 
   const refreshBaseChallengesFromServer = async () => {
-    const challengeResponse = await getChallengesWithFallback();
+    const [challengeResponse, myActiveResponse] = await Promise.all([
+      getChallengesWithFallback(),
+      getMyActiveChallenges().catch(() => ({ challenges: [] })),
+    ]);
     setUsingFallbackChallenges(challengeResponse.isFallback);
 
-    const activeMap = getStoredActiveChallengeMap();
+    const myChallengeMap = buildMyChallengeMap(myActiveResponse.challenges);
+    setStoredActiveChallengeMap(myChallengeMap);
+
     const mapped = (challengeResponse.challenges ?? []).map((challenge) =>
-      mapApiChallengeToUi(challenge, activeMap)
+      mapApiChallengeToUi(challenge, myChallengeMap)
     );
 
     setBaseChallenges(mapped);
@@ -868,10 +860,31 @@ export default function ChallengeScreen() {
       };
     }
 
-    const { data: logResult } = await logChallengeWithFallback(
-      challenge.userChallengeId,
-      payload
-    );
+    let logResult;
+
+    try {
+      const result = await logChallengeWithFallback(
+        challenge.userChallengeId,
+        payload
+      );
+      logResult = result.data;
+    } catch (error) {
+      if (isChallengeOwnershipError(error)) {
+        if (typeof challenge.challengeId === "number") {
+          removeChallengeItemFromStorage(challenge.challengeId);
+        }
+        removeCurrentChallengeCache();
+        await refreshBaseChallengesFromServer().catch((refreshError) => {
+          console.error("챌린지 상태 재동기화 실패:", refreshError);
+        });
+
+        throw new Error(
+          "챌린지 상태를 다시 동기화했어요. 다시 인증을 시도해주세요."
+        );
+      }
+
+      throw error;
+    }
 
     const success = true;
 
@@ -884,6 +897,7 @@ export default function ChallengeScreen() {
     updateBaseChallenge(updatedChallenge);
     persistChallengeItemToStorage(updatedChallenge);
     removeCurrentChallengeCache();
+    todayChallengeProgress.markCertified(logResult.user_challenge_id);
     triggerCardPulse(challenge.id);
     const earnedPoint = getChallengeRewardPoint(challenge);
     sessionPoints.add(

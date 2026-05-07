@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -9,6 +9,9 @@ import {
   CalendarDays,
   Gift,
   Bell,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Star,
   X,
   Heart,
@@ -32,6 +35,10 @@ import {
 } from "@/src/api/social";
 import { notificationStorage } from "@/src/utils/notificationStorage";
 import { sessionPoints } from "@/src/utils/sessionPoints";
+import {
+  TODAY_CHALLENGE_PROGRESS_EVENT,
+  todayChallengeProgress,
+} from "@/src/utils/todayChallengeProgress";
 import HealthGuidePanel from "@/src/components/dashboard/HealthGuidePanel";
 import DashboardBottomBuddy from "@/src/components/dashboard/DashboardBottomBuddy";
 import FriendAddModal from "@/src/components/social/FriendAddModal";
@@ -48,6 +55,8 @@ type ShopItem = {
   owned: boolean;
   equipped: boolean;
   emoji: string;
+  imageSrc?: string;
+  equippedImageSrc?: string;
 };
 
 
@@ -131,7 +140,7 @@ function parseFeedLogDate(logDate?: string | null) {
 }
 
 function getFeedTodayStatusLabel(item: FeedItem) {
-  return item.certified_today ? "오늘 인증 완료" : "오늘 아직 인증하지 않았어요";
+  return item.certified_today ? "인증 완료" : "";
 }
 
 function getFriendTodaySummary(challenges: FeedItem[]) {
@@ -157,34 +166,17 @@ function getFeedChallengeKey(item: FeedItem) {
   return item.challenge_title.trim().toLowerCase();
 }
 
-const feedCardVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 80 : -80,
-    opacity: 0,
-    scale: 0.96,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    scale: 1,
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? -80 : 80,
-    opacity: 0,
-    scale: 0.96,
-  }),
-};
-
-
 const initialShopItems: ShopItem[] = [
   {
     id: 1,
     tab: "모자",
-    name: "초록 비니",
+    name: "버디 포근 모자",
     price: 0,
     owned: true,
     equipped: true,
-    emoji: "🎩",
+    emoji: "🧸",
+    imageSrc: "/images/buddy-hat.png",
+    equippedImageSrc: "/images/buddy-hat-on.png",
   },
   {
     id: 2,
@@ -391,6 +383,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [cheeredKeys, setCheeredKeys] = useState<Set<string>>(new Set());
   const [shopOpen, setShopOpen] = useState(false);
   const [shopTab, setShopTab] = useState<ShopTab>("모자");
+  const [shopNotice, setShopNotice] = useState("");
   const [points, setPoints] = useState(() =>
     sessionPoints.initialize(dashboardData.point)
   );
@@ -398,8 +391,10 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [bubbleMessage, setBubbleMessage] = useState("");
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [myActiveChallenges, setMyActiveChallenges] = useState<MyActiveChallenge[]>([]);
+  const [certifiedTodayIds, setCertifiedTodayIds] = useState<Set<number>>(
+    () => todayChallengeProgress.getIds()
+  );
   const [activeFeedIndex, setActiveFeedIndex] = useState(0);
-  const [dragDirection, setDragDirection] = useState(0);
   const [guidePanelOpen, setGuidePanelOpen] = useState(true);
   const [friendAddOpen, setFriendAddOpen] = useState(false);
   const [friendRequestOpen, setFriendRequestOpen] = useState(false);
@@ -410,6 +405,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const [todayHealthRecord, setTodayHealthRecord] = useState<TodayHealthRecord>(
     loadTodayHealthRecord
   );
+  const feedCarouselRef = useRef<HTMLDivElement | null>(null);
+  const feedCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const feedScrollFrame = useRef<number | null>(null);
 
   const healthRecordItems = useMemo(
     () => [
@@ -488,6 +486,19 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, []);
 
   useEffect(() => {
+    const syncCertifiedIds = () =>
+      setCertifiedTodayIds(todayChallengeProgress.getIds());
+
+    window.addEventListener(TODAY_CHALLENGE_PROGRESS_EVENT, syncCertifiedIds);
+    window.addEventListener("focus", syncCertifiedIds);
+
+    return () => {
+      window.removeEventListener(TODAY_CHALLENGE_PROGRESS_EVENT, syncCertifiedIds);
+      window.removeEventListener("focus", syncCertifiedIds);
+    };
+  }, []);
+
+  useEffect(() => {
     if (mock) return;
 
     const loadSeenIds = () => {
@@ -537,10 +548,15 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   }, [mock]);
 
   useEffect(() => {
-    sessionPoints.initialize(dashboardData.point);
+    const timer = window.setTimeout(() => {
+      setPoints(sessionPoints.initialize(dashboardData.point));
+    }, 0);
     const handlePointChange = () => setPoints(sessionPoints.get());
     window.addEventListener("session-points-change", handlePointChange);
-    return () => window.removeEventListener("session-points-change", handlePointChange);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("session-points-change", handlePointChange);
+    };
   }, [dashboardData.point]);
 
   const groupedFeedItems = useMemo(() => {
@@ -584,24 +600,58 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
     }));
   }, [feedItems]);
 
-  const activeFeed = groupedFeedItems[activeFeedIndex] ?? null;
+  const normalizedActiveFeedIndex =
+    groupedFeedItems.length > 0
+      ? Math.min(activeFeedIndex, groupedFeedItems.length - 1)
+      : 0;
 
-  const visibleFriends = useMemo(() => {
-    if (groupedFeedItems.length <= 2) return groupedFeedItems;
+  useEffect(() => {
+    return () => {
+      if (feedScrollFrame.current !== null) {
+        window.cancelAnimationFrame(feedScrollFrame.current);
+      }
+    };
+  }, []);
 
-    const previousIndex =
-      (activeFeedIndex - 1 + groupedFeedItems.length) % groupedFeedItems.length;
-    const nextIndex = (activeFeedIndex + 1) % groupedFeedItems.length;
+  useEffect(() => {
+    feedCardRefs.current[normalizedActiveFeedIndex]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [normalizedActiveFeedIndex]);
 
-    return [
-      groupedFeedItems[previousIndex],
-      groupedFeedItems[activeFeedIndex],
-      groupedFeedItems[nextIndex],
-    ];
-  }, [activeFeedIndex, groupedFeedItems]);
+  const handleFeedCarouselScroll = () => {
+    if (feedScrollFrame.current !== null) {
+      window.cancelAnimationFrame(feedScrollFrame.current);
+    }
+
+    feedScrollFrame.current = window.requestAnimationFrame(() => {
+      const container = feedCarouselRef.current;
+      if (!container) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const centerX = containerRect.left + containerRect.width / 2;
+
+      const nearestIndex = feedCardRefs.current.reduce(
+        (nearest, card, index) => {
+          if (!card) return nearest;
+
+          const rect = card.getBoundingClientRect();
+          const distance = Math.abs(rect.left + rect.width / 2 - centerX);
+
+          return distance < nearest.distance ? { index, distance } : nearest;
+        },
+        { index: normalizedActiveFeedIndex, distance: Number.POSITIVE_INFINITY }
+      ).index;
+
+      if (nearestIndex !== normalizedActiveFeedIndex) {
+        setActiveFeedIndex(nearestIndex);
+      }
+    });
+  };
 
   const handlePrevFeed = () => {
-    setDragDirection(-1);
     setActiveFeedIndex((prev) =>
       groupedFeedItems.length
         ? (prev - 1 + groupedFeedItems.length) % groupedFeedItems.length
@@ -610,7 +660,6 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   };
 
   const handleNextFeed = () => {
-    setDragDirection(1);
     setActiveFeedIndex((prev) =>
       groupedFeedItems.length ? (prev + 1) % groupedFeedItems.length : 0
     );
@@ -618,7 +667,9 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   const todayChallenges = getTodayChecklistFromChallenges(challenges);
   const activeChallengeCount = myActiveChallenges.length;
-  const completedTodayCount = 0;
+  const completedTodayCount = myActiveChallenges.filter((challenge) =>
+    certifiedTodayIds.has(challenge.user_challenge_id)
+  ).length;
 
   const dashboardChallengePercent = activeChallengeCount
     ? Math.round((completedTodayCount / activeChallengeCount) * 100)
@@ -627,6 +678,15 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   const challengePercent = todayChallenges.length
     ? Math.round((completedCount / todayChallenges.length) * 100)
     : 0;
+  const todayTaskPercent = activeChallengeCount
+    ? dashboardChallengePercent
+    : challengePercent;
+  const todayTaskCompletedCount = activeChallengeCount
+    ? completedTodayCount
+    : completedCount;
+  const todayTaskTotalCount = activeChallengeCount
+    ? activeChallengeCount
+    : todayChallenges.length;
 
   const equippedItems = shopItems.filter((item) => item.equipped);
 
@@ -703,6 +763,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
   const handleEquip = (target: ShopItem) => {
     if (!target.owned) return;
+    setShopNotice("");
 
     setShopItems((prev) =>
       prev.map((item) =>
@@ -714,6 +775,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   };
 
   const handleUnequip = (target: ShopItem) => {
+    setShopNotice("");
     setShopItems((prev) =>
       prev.map((item) =>
         item.id === target.id ? { ...item, equipped: false } : item
@@ -722,8 +784,17 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
   };
 
   const handleBuy = (target: ShopItem) => {
-    if (target.owned || points < target.price) return;
+    if (target.owned) return;
+    if (points < target.price) {
+      setShopNotice(
+        `${target.name} 구매에 ${(target.price - points).toLocaleString(
+          "ko-KR"
+        )}P가 부족해요. 챌린지를 인증해 포인트를 모아보세요.`
+      );
+      return;
+    }
 
+    setShopNotice("");
     setPoints(sessionPoints.add(-target.price, "shop_purchase", `${target.name} 구매`));
     setShopItems((prev) =>
       prev.map((item) =>
@@ -794,8 +865,14 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                     <div className="absolute bottom-6 right-6 h-3 w-3 rounded-full bg-white/35" />
 
                     <div className="relative z-10 flex h-full items-center justify-center">
-                      <BuddyCharacter
-                        reactionType={heroReactionType}
+                        <BuddyCharacter
+                          reactionType={heroReactionType}
+                          hatImageSrc={
+                            equippedItems.find((item) => item.tab === "모자")
+                              ?.equippedImageSrc ??
+                            equippedItems.find((item) => item.tab === "모자")
+                              ?.imageSrc
+                          }
                         hatEmoji={
                           equippedItems.find((item) => item.tab === "모자")
                             ?.emoji ?? ""
@@ -929,19 +1006,28 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 />
               </div>
 
-              <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#163126]/8">
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <p className="text-xs font-bold text-[#163126]/60">
+                  오늘 챌린지 달성률
+                </p>
+                <p className="text-xs font-semibold text-[#2E7D5B]">
+                  {todayTaskCompletedCount}/{todayTaskTotalCount} 완료
+                </p>
+              </div>
+
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#163126]/8">
                 <div
                   className="h-full rounded-full bg-[linear-gradient(90deg,#8ce7a7,#b7f3c9)]"
                   style={{
                     width: `${Math.max(
                       0,
-                      Math.min(100, dashboardData.challengeProgress)
+                      Math.min(100, todayTaskPercent)
                     )}%`,
                   }}
                 />
               </div>
               <p className="mt-2 text-xs text-[#163126]/52">
-                {dashboardData.challengeProgress}% 달성
+                오늘 진행 중인 챌린지 기준 {todayTaskPercent}% 달성
               </p>
               </motion.div>
 
@@ -1027,30 +1113,44 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                 />
               </div>
 
-              <div className="space-y-3">
+              <div className="max-h-[282px] space-y-3 overflow-y-auto pr-1">
                 {myActiveChallenges.length === 0 ? (
                   <div className="rounded-2xl bg-[#f8fbf8] px-4 py-5 text-sm text-[#163126]/50">
                     진행 중인 챌린지가 없어요.
                   </div>
                 ) : (
-                  myActiveChallenges.slice(0, 3).map((challenge) => (
-                    <div
-                      key={challenge.user_challenge_id}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-[#163126]">
-                          {challenge.title}
-                        </p>
-                        <p className="mt-1 text-xs text-[#163126]/45">
-                          {challenge.current_streak}일 연속 진행 중
-                        </p>
+                  myActiveChallenges.map((challenge) => {
+                    const certifiedToday = certifiedTodayIds.has(
+                      challenge.user_challenge_id
+                    );
+
+                    return (
+                      <div
+                        key={challenge.user_challenge_id}
+                        className="flex w-full items-center justify-between rounded-2xl border border-[#163126]/8 bg-[#fbfdfb] px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-[#163126]">
+                            {challenge.title}
+                          </p>
+                          <p className="mt-1 text-xs text-[#163126]/45">
+                            {certifiedToday
+                              ? "오늘 인증 완료"
+                              : `${challenge.current_streak}일 연속 진행 중`}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            certifiedToday
+                              ? "bg-[#2E7D5B] text-white"
+                              : "bg-[#ecf9f1] text-[#2E7D5B]"
+                          }`}
+                        >
+                          {certifiedToday ? "완료" : "진행중"}
+                        </span>
                       </div>
-                      <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
-                        진행중
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </motion.div>
@@ -1110,24 +1210,28 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
               </div>
             ) : (
               <div>
-                <div className="mb-5 flex gap-4 overflow-x-auto scroll-smooth px-1 pb-3 pt-1 scrollbar-hide cursor-grab active:cursor-grabbing">
+                <div className="mb-4 flex gap-4 overflow-x-auto scroll-smooth px-1 pb-4 pt-2 scrollbar-hide">
                   {groupedFeedItems.map((friend, index) => {
-                    const active = index === activeFeedIndex;
+                    const active = index === normalizedActiveFeedIndex;
 
                     return (
                       <button
                         key={friend.user_id}
                         onClick={() => {
-                          setDragDirection(index > activeFeedIndex ? 1 : -1);
                           setActiveFeedIndex(index);
                         }}
-                        className="flex shrink-0 flex-col items-center gap-2"
+                        className={`relative flex shrink-0 flex-col items-center gap-2 rounded-2xl px-1.5 py-1 transition duration-200 ${
+                          active
+                            ? "scale-[1.05] opacity-100"
+                            : "scale-[0.92] opacity-60 hover:opacity-85"
+                        }`}
+                        aria-current={active ? "true" : undefined}
                       >
                         <div
-                          className={`rounded-full transition ${
+                          className={`rounded-full transition duration-200 ${
                             active
-                              ? "ring-2 ring-[#2E7D5B] ring-offset-2"
-                              : "opacity-70 hover:opacity-100"
+                              ? "shadow-[0_10px_24px_rgba(46,125,91,0.22)] ring-2 ring-[#2E7D5B] ring-offset-2 ring-offset-white"
+                              : ""
                           }`}
                         >
                           <ProfileNameAvatar
@@ -1138,39 +1242,54 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                           />
                         </div>
 
-                        <span className="max-w-[64px] truncate text-xs font-medium text-[#163126]">
+                        <span
+                          className={`max-w-[64px] truncate text-xs text-[#163126] transition ${
+                            active ? "font-bold" : "font-medium"
+                          }`}
+                        >
                           {friend.nickname}
                         </span>
+
+                        <span
+                          className={`h-1 rounded-full bg-[#2E7D5B] transition-all ${
+                            active ? "w-6 opacity-100" : "w-1 opacity-0"
+                          }`}
+                        />
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="relative overflow-hidden">
-                  <AnimatePresence mode="wait" custom={dragDirection}>
-                    {visibleFriends.length > 0 && (
-                      <motion.div
-                        key={activeFeed?.user_id ?? activeFeedIndex}
-                        custom={dragDirection}
-                        variants={feedCardVariants}
-                        initial="enter"
-                        animate="center"
-                        exit="exit"
-                        transition={{
-                          x: { type: "spring", stiffness: 280, damping: 28 },
-                          opacity: { duration: 0.18 },
-                          scale: { duration: 0.2 },
-                        }}
-                        drag="x"
-                        dragConstraints={{ left: 0, right: 0 }}
-                        dragElastic={0.18}
-                        onDragEnd={(_, info) => {
-                          if (info.offset.x < -70) handleNextFeed();
-                          if (info.offset.x > 70) handlePrevFeed();
-                        }}
-                        className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))]"
+                <div className="group relative -mx-5 overflow-hidden px-0">
+                  {groupedFeedItems.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handlePrevFeed}
+                        className="absolute left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[#dce9e0] bg-white/88 text-[#2E7D5B] opacity-0 shadow-[0_12px_28px_rgba(22,49,38,0.12)] backdrop-blur transition hover:-translate-x-0.5 hover:bg-white group-hover:opacity-100 md:flex"
+                        aria-label="이전 친구 활동 보기"
                       >
-                        {visibleFriends.map((friend) => {
+                        <ChevronLeft size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNextFeed}
+                        className="absolute right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[#dce9e0] bg-white/88 text-[#2E7D5B] opacity-0 shadow-[0_12px_28px_rgba(22,49,38,0.12)] backdrop-blur transition hover:translate-x-0.5 hover:bg-white group-hover:opacity-100 md:flex"
+                        aria-label="다음 친구 활동 보기"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </>
+                  )}
+
+                  <div
+                    ref={feedCarouselRef}
+                    onScroll={handleFeedCarouselScroll}
+                    className="flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-[6%] pb-5 pt-2 scrollbar-hide sm:px-[12%] md:px-[18%]"
+                  >
+                    <AnimatePresence initial={false}>
+                      {groupedFeedItems.map((friend, index) => {
+                          const active = index === normalizedActiveFeedIndex;
                           const targetLog =
                             friend.challenges.find((challenge) => challenge.certified_today) ??
                             friend.challenges[0];
@@ -1179,24 +1298,48 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                           const todaySummary = getFriendTodaySummary(friend.challenges);
 
                           return (
-                            <div
+                            <motion.div
                               key={`visible-${friend.user_id}`}
-                              className="rounded-[26px] border border-[#163126]/8 bg-white p-5 shadow-[0_14px_36px_rgba(46,125,91,0.06)]"
+                              ref={(node) => {
+                                feedCardRefs.current[index] = node;
+                              }}
+                              layout
+                              animate={{
+                                scale: active ? 1 : 0.94,
+                                opacity: active ? 1 : 0.62,
+                                y: active ? 0 : 5,
+                              }}
+                              whileHover={active ? { y: -4 } : undefined}
+                              whileTap={active ? { scale: 0.98 } : undefined}
+                              transition={{ type: "spring", stiffness: 260, damping: 26 }}
+                              className={`min-h-[268px] w-[88%] max-w-[520px] shrink-0 snap-center overflow-hidden rounded-[26px] border bg-white p-4 transition-shadow sm:w-[76%] sm:p-5 md:w-[64%] lg:w-[58%] ${
+                                active
+                                  ? "border-[#2E7D5B]/18 shadow-[0_24px_58px_rgba(46,125,91,0.16)]"
+                                  : "border-[#163126]/8 shadow-[0_12px_28px_rgba(46,125,91,0.05)]"
+                              }`}
                             >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-center gap-3">
+                              <div
+                                className={`transition-opacity duration-200 ${
+                                  active
+                                    ? "opacity-100"
+                                    : "pointer-events-none opacity-0"
+                                }`}
+                                aria-hidden={!active}
+                              >
+                              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                <div className="flex min-w-0 items-center gap-3">
                                   <ProfileNameAvatar
                                     name={friend.nickname}
                                     image={friend.profile_image}
-                                    className="h-12 w-12"
+                                    className="h-11 w-11 shrink-0 sm:h-12 sm:w-12"
                                     textClassName="text-[10px]"
                                   />
 
-                                  <div>
-                                    <p className="text-sm font-bold text-[#163126]">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-bold text-[#163126]">
                                       {friend.nickname}
                                     </p>
-                                    <p className="mt-1 text-xs text-[#163126]/45">
+                                    <p className="mt-1 break-keep text-xs leading-5 text-[#163126]/45">
                                       {todaySummary}
                                     </p>
                                   </div>
@@ -1211,18 +1354,25 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                     )
                                   }
                                   disabled={cheered}
-                                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                                  className={`max-w-full shrink-0 self-start rounded-full px-4 py-2 text-xs font-semibold leading-4 transition sm:self-auto ${
                                     cheered
-                                      ? "cursor-default bg-[#ecf9f1] text-[#2E7D5B]"
+                                      ? "cursor-default bg-[#ecf9f1] text-[#2E7D5B]/80 opacity-85"
                                       : "bg-[#163126] text-white hover:bg-[#1d4232]"
                                   }`}
                                 >
-                                  {cheered ? "응원 완료" : "응원하기"}
+                                  {cheered ? (
+                                    <span className="flex items-center gap-1.5">
+                                      <Check size={13} />
+                                      응원 보냈어요
+                                    </span>
+                                  ) : (
+                                    "응원하기"
+                                  )}
                                 </button>
                               </div>
 
-                              <div className="mt-5 rounded-[22px] bg-[#f8fbf8] px-4 py-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2E7D5B]">
+                              <div className="mt-5 rounded-[22px] bg-[#f8fbf8] px-3 py-4 sm:px-4">
+                                <p className="break-keep text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2E7D5B] sm:text-xs sm:tracking-[0.16em]">
                                   today challenge
                                 </p>
 
@@ -1230,23 +1380,19 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                   {friend.challenges.slice(0, 2).map((challenge) => (
                                     <div
                                       key={`${challenge.user_id}-${challenge.challenge_title}-${challenge.created_at}`}
-                                      className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3"
+                                      className="grid min-w-0 gap-2 rounded-2xl bg-white px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-3"
                                     >
-                                      <span className="min-w-0 truncate text-sm font-semibold text-[#163126]">
+                                      <span className="min-w-0 break-keep text-sm font-semibold leading-5 text-[#163126]">
                                         {challenge.challenge_title}
                                       </span>
 
-                                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                                        <span
-                                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                            challenge.certified_today
-                                              ? "bg-[#ecf9f1] text-[#2E7D5B]"
-                                              : "bg-[#f2f4f3] text-[#163126]/45"
-                                          }`}
-                                        >
-                                          {getFeedTodayStatusLabel(challenge)}
-                                        </span>
-                                        <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
+                                        {challenge.certified_today && (
+                                          <span className="max-w-full rounded-full bg-[#ecf9f1] px-3 py-1 text-center text-xs font-semibold leading-4 text-[#2E7D5B]">
+                                            {getFeedTodayStatusLabel(challenge)}
+                                          </span>
+                                        )}
+                                        <span className="max-w-full rounded-full bg-[#ecf9f1] px-3 py-1 text-center text-xs font-semibold leading-4 text-[#2E7D5B]">
                                           {challenge.current_streak}일
                                         </span>
                                       </div>
@@ -1254,12 +1400,12 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                                   ))}
                                 </div>
                               </div>
-                            </div>
+                              </div>
+                            </motion.div>
                           );
                         })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 {groupedFeedItems.length > 3 && (
@@ -1268,12 +1414,11 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
                       <button
                         key={`dot-${friend.user_id}`}
                         onClick={() => {
-                          setDragDirection(index > activeFeedIndex ? 1 : -1);
                           setActiveFeedIndex(index);
                         }}
                         className={`h-2 rounded-full transition-all ${
-                          index === activeFeedIndex
-                            ? "w-5 bg-[#2E7D5B]"
+                          index === normalizedActiveFeedIndex
+                            ? "w-8 bg-[#2E7D5B]"
                             : "w-2 bg-[#d8e6dd]"
                         }`}
                       />
@@ -1336,6 +1481,7 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
             onTabChange={setShopTab}
             items={visibleShopItems}
             equippedItems={equippedItems}
+            notice={shopNotice}
             onClose={() => setShopOpen(false)}
             onEquip={handleEquip}
             onUnequip={handleUnequip}
@@ -1367,11 +1513,13 @@ export default function DashboardScreen({ dashboardData, mock = false }: Props) 
 
 function BuddyCharacter({
   reactionType,
+  hatImageSrc,
   hatEmoji,
   scarfEmoji,
   accessoryEmoji,
 }: {
   reactionType: HeroReactionType;
+  hatImageSrc?: string;
   hatEmoji: string;
   scarfEmoji: string;
   accessoryEmoji: string;
@@ -1403,53 +1551,31 @@ function BuddyCharacter({
               repeat: Infinity,
             }
       }
-      className="relative flex h-[180px] w-[140px] items-center justify-center"
+      className="relative flex h-[220px] w-[180px] items-center justify-center pt-5"
     >
-      <div className="relative h-[140px] w-[120px]">
-        <div className="absolute left-2 top-2 h-9 w-9 rounded-full bg-[#ffb6b6]" />
-        <div className="absolute right-2 top-2 h-9 w-9 rounded-full bg-[#ffb6b6]" />
-
-        <div className="absolute left-3 top-3 h-6 w-6 rounded-full bg-[#ffd7d7]" />
-        <div className="absolute right-3 top-3 h-6 w-6 rounded-full bg-[#ffd7d7]" />
-
-        <div className="absolute inset-x-0 top-6 mx-auto h-[110px] w-[110px] rounded-full bg-[radial-gradient(circle_at_35%_30%,#ffd7b8_0%,#f7b48d_52%,#e68b5e_100%)] shadow-[0_10px_20px_rgba(22,49,38,0.08)]" />
-
-        <motion.div
-          animate={{ scaleY: [1, 1, 1, 0.15, 1, 1] }}
-          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute left-[30px] top-[56px] h-4 w-4 rounded-full bg-[#2b1f1a]"
-          style={{ transformOrigin: "center center" }}
-        />
-        <motion.div
-          animate={{ scaleY: [1, 1, 1, 0.15, 1, 1] }}
-          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute right-[30px] top-[56px] h-4 w-4 rounded-full bg-[#2b1f1a]"
-          style={{ transformOrigin: "center center" }}
+      <div className="relative h-[178px] w-[144px]">
+        <img
+          src="/images/buddy-dashboard.png"
+          alt=""
+          className="h-full w-full rounded-[28px] object-cover object-center shadow-[0_18px_34px_rgba(22,49,38,0.18)]"
         />
 
-        <div className="absolute left-[26px] top-[52px] h-7 w-7 rounded-full border-2 border-white/50" />
-        <div className="absolute right-[26px] top-[52px] h-7 w-7 rounded-full border-2 border-white/50" />
-
-        <div className="absolute left-[47px] top-[80px] h-3 w-3 rounded-full bg-[#8d5b4d]" />
-        <div className="absolute right-[47px] top-[80px] h-3 w-3 rounded-full bg-[#8d5b4d]" />
-        <div className="absolute left-1/2 top-[78px] h-4 w-4 -translate-x-1/2 rounded-full bg-[#ff8e9a]" />
-
-        <div className="absolute left-1/2 top-[92px] h-3 w-6 -translate-x-1/2 rounded-b-full border-b-2 border-[#6c3d38]" />
-        <div className="absolute left-[50px] top-[100px] h-5 w-2 rotate-12 rounded-full bg-[#ff8aa0]" />
-        <div className="absolute right-[50px] top-[100px] h-5 w-2 -rotate-12 rounded-full bg-[#ff8aa0]" />
-
-        {hatEmoji && (
-          <span className="absolute right-[2px] top-[18px] text-3xl">
-            {hatEmoji}
-          </span>
-        )}
+        {hatImageSrc ? (
+          <img
+            src={hatImageSrc}
+            alt=""
+            className="pointer-events-none absolute left-[48%] -top-8 h-[90px] w-36 -translate-x-1/2 object-contain"
+          />
+        ) : hatEmoji ? (
+          <span className="absolute right-1 top-2 text-3xl">{hatEmoji}</span>
+        ) : null}
         {scarfEmoji && (
-          <span className="absolute left-[-8px] bottom-[8px] text-2xl">
+          <span className="absolute left-2 bottom-8 text-2xl">
             {scarfEmoji}
           </span>
         )}
         {accessoryEmoji && (
-          <span className="absolute right-[6px] bottom-[10px] text-xl">
+          <span className="absolute right-2 bottom-8 text-xl">
             {accessoryEmoji}
           </span>
         )}
@@ -1732,26 +1858,22 @@ function FriendActivityModal({
                       </button>
                     </div>
 
-                    <div className="mt-5 space-y-2">
+                    <div className="mt-5 max-h-[174px] space-y-2 overflow-y-auto pr-1">
                       {friend.challenges.map((challenge) => (
                         <div
                           key={`all-${challenge.user_id}-${challenge.challenge_title}-${challenge.created_at}`}
                           className="rounded-2xl bg-white px-4 py-3"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="min-w-0 truncate text-sm font-semibold text-[#163126]">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="min-w-0 flex-1 break-keep text-sm font-semibold leading-5 text-[#163126]">
                               {challenge.challenge_title}
                             </span>
                             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                  challenge.certified_today
-                                    ? "bg-[#ecf9f1] text-[#2E7D5B]"
-                                    : "bg-[#f2f4f3] text-[#163126]/45"
-                                }`}
-                              >
-                                {getFeedTodayStatusLabel(challenge)}
-                              </span>
+                              {challenge.certified_today && (
+                                <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
+                                  {getFeedTodayStatusLabel(challenge)}
+                                </span>
+                              )}
                               <span className="rounded-full bg-[#ecf9f1] px-3 py-1 text-xs font-semibold text-[#2E7D5B]">
                                 {challenge.current_streak}일
                               </span>
@@ -1777,6 +1899,7 @@ function ShopModal({
   onTabChange,
   items,
   equippedItems,
+  notice,
   onClose,
   onEquip,
   onUnequip,
@@ -1787,6 +1910,7 @@ function ShopModal({
   onTabChange: (tab: ShopTab) => void;
   items: ShopItem[];
   equippedItems: ShopItem[];
+  notice: string;
   onClose: () => void;
   onEquip: (item: ShopItem) => void;
   onUnequip: (item: ShopItem) => void;
@@ -1830,12 +1954,29 @@ function ShopModal({
             <p className="text-sm font-semibold text-[#2E7D5B]">미리보기</p>
 
             <div className="mt-4 flex h-[230px] items-center justify-center rounded-[24px] border border-[#9bdfb6] bg-white">
-              <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-[#f3f7eb] text-6xl">
-                🐹
-                <span className="absolute -right-2 top-0 text-2xl">
-                  {equippedItems.find((item) => item.tab === "모자")?.emoji ??
-                    ""}
-                </span>
+              <div className="relative flex h-36 w-28 items-center justify-center rounded-[24px] bg-[#f3f7eb] pt-3">
+                <img
+                  src="/images/buddy-dashboard.png"
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+                {equippedItems.find((item) => item.tab === "모자")?.imageSrc ? (
+                  <img
+                    src={
+                      equippedItems.find((item) => item.tab === "모자")
+                        ?.equippedImageSrc ??
+                      equippedItems.find((item) => item.tab === "모자")
+                        ?.imageSrc
+                    }
+                    alt=""
+                    className="pointer-events-none absolute left-[48%] -top-6 h-[76px] w-32 -translate-x-1/2 object-contain"
+                  />
+                ) : (
+                  <span className="absolute -right-2 top-0 text-2xl">
+                    {equippedItems.find((item) => item.tab === "모자")
+                      ?.emoji ?? ""}
+                  </span>
+                )}
                 <span className="absolute -left-2 bottom-0 text-xl">
                   {equippedItems.find((item) => item.tab === "옷/스카프")
                     ?.emoji ?? ""}
@@ -1865,7 +2006,15 @@ function ShopModal({
                     className="flex items-center justify-between gap-3 rounded-2xl border border-[#9bdfb6] bg-white px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">{item.emoji}</span>
+                      {item.imageSrc ? (
+                        <img
+                          src={item.imageSrc}
+                          alt=""
+                          className="h-8 w-10 rounded-[10px] object-cover"
+                        />
+                      ) : (
+                        <span className="text-xl">{item.emoji}</span>
+                      )}
                       <span className="text-sm font-medium text-[#163126]">
                         {item.name}
                       </span>
@@ -1903,6 +2052,12 @@ function ShopModal({
             </div>
 
             <div className="flex-1 overflow-auto px-5 py-5 md:px-7">
+              {notice && (
+                <div className="mb-4 rounded-[18px] border border-[#f3d99b] bg-[#fff8e8] px-4 py-3 text-sm font-semibold text-[#8a6400]">
+                  {notice}
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((item) => (
                   <div
@@ -1913,7 +2068,17 @@ function ShopModal({
                         : "border-[#163126]/8 bg-white"
                     }`}
                   >
-                    <div className="text-4xl">{item.emoji}</div>
+                    <div className="flex h-16 items-center justify-center">
+                      {item.imageSrc ? (
+                        <img
+                          src={item.imageSrc}
+                          alt=""
+                          className="h-14 w-20 rounded-[16px] object-cover shadow-[0_8px_18px_rgba(22,49,38,0.10)]"
+                        />
+                      ) : (
+                        <span className="text-4xl">{item.emoji}</span>
+                      )}
+                    </div>
                     <p className="mt-4 text-sm font-semibold text-[#163126]">
                       {item.name}
                     </p>
@@ -1937,8 +2102,11 @@ function ShopModal({
 
                     <div className="mt-4">
                       {item.equipped ? (
-                        <button className="rounded-full bg-[#163126] px-4 py-2 text-xs font-semibold text-white">
-                          선택됨
+                        <button
+                          onClick={() => onUnequip(item)}
+                          className="rounded-full bg-[#163126] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#28513f]"
+                        >
+                          해제하기
                         </button>
                       ) : item.owned ? (
                         <button
@@ -1950,7 +2118,11 @@ function ShopModal({
                       ) : (
                         <button
                           onClick={() => onBuy(item)}
-                          className="rounded-full border border-[#d7e7dc] bg-[#f9fcfa] px-4 py-2 text-xs font-semibold text-[#163126]"
+                          className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                            points < item.price
+                              ? "border-[#ead9b0] bg-[#fff8e8] text-[#8a6400]"
+                              : "border-[#d7e7dc] bg-[#f9fcfa] text-[#163126] hover:bg-[#eef8f1]"
+                          }`}
                         >
                           구매하기
                         </button>
